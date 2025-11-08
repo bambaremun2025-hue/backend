@@ -5,50 +5,37 @@ const bcrypt = require('bcryptjs');
 const cors = require('cors');
 
 const app = express();
-const PORT = 5000;
+const PORT = process.env.PORT || 5000;
 
 app.use(cors({
-    origin: ['https://builder.io', 'http://localhost:3000', 'http://localhost:8272'],
+    origin: ['https://4a5f0464c8f24a09bd2bc580e8c9401a-9ae7243f6c3f4aa0bdc46c3f9.fly.dev', 'http://localhost:3000'],
     credentials: true
 }));
+
 app.use(express.json());
 
 const dbPath = path.join(__dirname, 'ma-boutique.db');
 const db = new sqlite3.Database(dbPath);
 
-db.run("CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT UNIQUE, password TEXT, nom TEXT, boutique TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP)");
+db.run("CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT UNIQUE, password TEXT, name TEXT)");
 
 app.get('/api/test', (req, res) => {
-    res.json({ message: 'API working!', timestamp: new Date() });
+    res.json({ message: "L'API fonctionne !", timestamp: new Date() });
 });
 
 app.post('/api/register', async (req, res) => {
-    const { email, password, nom, boutique } = req.body;
+    const { email, password, name } = req.body;
     try {
         const hashedPassword = await bcrypt.hash(password, 10);
-        db.run('INSERT INTO users (email, password, nom, boutique) VALUES (?, ?, ?, ?)', [email, hashedPassword, nom, boutique], function(err) {
-            if (err) return res.status(400).json({ error: 'Email deja utilise' });
-            res.json({ message: 'Compte cree!', user: { id: this.lastID, email, nom, boutique } });
+        db.run('INSERT INTO users (email, password, name) VALUES (?, ?, ?)', [email, hashedPassword, name], function(err) {
+            if (err) return res.status(400).json({ error: 'Email déjà utilisé' });
+            res.json({ message: 'Compte créé', user: { id: this.lastID, email, name } });
         });
     } catch (error) {
         res.status(500).json({ error: 'Erreur serveur' });
     }
 });
 
-app.post('/api/login', async (req, res) => {
-    const { email, password } = req.body;
-    db.get('SELECT * FROM users WHERE email = ?', [email], async (err, user) => {
-        if (err) return res.status(500).json({ error: 'Erreur serveur' });
-        if (!user) return res.status(401).json({ error: 'Email ou mot de passe incorrect' });
-        const validPassword = await bcrypt.compare(password, user.password);
-        if (!validPassword) return res.status(401).json({ error: 'Email ou mot de passe incorrect' });
-        res.json({ message: 'Connexion reussie!', user: { id: user.id, email: user.email, nom: user.nom, boutique: user.boutique } });
-    });
-});
-
-const PORT = process.env.PORT || 5000;
 app.listen(PORT, '0.0.0.0', () => {
-    console.log("Server running on port " + PORT);
-    console.log("Test: http://localhost:" + PORT + "/api/test");
+    console.log(`Server running on port ${PORT}`);
 });
-
