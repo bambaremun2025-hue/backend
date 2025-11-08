@@ -24,40 +24,58 @@ const dbPath = path.join(__dirname, 'ma-boutique.db');
 const db = new sqlite3.Database(dbPath);
 
 const initDatabase = () => {
-    db.run(`CREATE TABLE IF NOT EXISTS users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        email TEXT UNIQUE NOT NULL,
-        password TEXT NOT NULL,
-        name TEXT NOT NULL,
-        role TEXT DEFAULT 'user',
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )`);
+    db.serialize(() => {
+        db.run(`CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            email TEXT UNIQUE NOT NULL,
+            password TEXT NOT NULL,
+            name TEXT NOT NULL,
+            role TEXT DEFAULT 'user',
+            subscription_type TEXT DEFAULT 'trial',
+            trial_start DATE DEFAULT CURRENT_DATE,
+            trial_end DATE,
+            subscription_start DATE,
+            subscription_end DATE,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )`);
 
-    db.run(`CREATE TABLE IF NOT EXISTS products (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT NOT NULL,
-        price REAL NOT NULL,
-        description TEXT,
-        stock INTEGER DEFAULT 0,
-        image_url TEXT,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )`);
+        db.run(`CREATE TABLE IF NOT EXISTS products (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            price REAL NOT NULL,
+            description TEXT,
+            stock INTEGER DEFAULT 0,
+            image_url TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )`);
 
-    db.run(`CREATE TABLE IF NOT EXISTS sales (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        product_id INTEGER,
-        user_id INTEGER,
-        quantity INTEGER NOT NULL,
-        total_price REAL NOT NULL,
-        sale_date DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (product_id) REFERENCES products (id),
-        FOREIGN KEY (user_id) REFERENCES users (id)
-    )`);
+        db.run(`CREATE TABLE IF NOT EXISTS sales (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            product_id INTEGER,
+            user_id INTEGER,
+            quantity INTEGER NOT NULL,
+            total_price REAL NOT NULL,
+            sale_date DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (product_id) REFERENCES products (id),
+            FOREIGN KEY (user_id) REFERENCES users (id)
+        )`);
 
-    const adminPassword = bcrypt.hashSync('Egghead1!', 10);
-    db.run(`INSERT OR IGNORE INTO users (email, password, name, role) 
-            VALUES (?, ?, ?, ?)`, 
-        ['samaboutiksen@gmail.com', adminPassword, 'Administrator', 'admin']);
+        db.run(`CREATE TABLE IF NOT EXISTS subscriptions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            type TEXT NOT NULL,
+            start_date DATE NOT NULL,
+            end_date DATE NOT NULL,
+            status TEXT DEFAULT 'active',
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users (id)
+        )`);
+
+        const adminPassword = bcrypt.hashSync('Egghead1!', 10);
+        db.run(`INSERT OR IGNORE INTO users (email, password, name, role, subscription_type) 
+                VALUES (?, ?, ?, ?, ?)`, 
+            ['samaboutiksen@gmail.com', adminPassword, 'Administrator', 'admin', 'premium']);
+    });
 };
 
 const authenticateToken = (req, res, next) => {
@@ -85,6 +103,34 @@ const requireAdmin = (req, res, next) => {
     }
 };
 
+const checkSubscription = (req, res, next) => {
+    const user = req.user;
+    
+    if (user.role === 'admin') {
+        return next();
+    }
+
+    const today = new Date().toISOString().split('T')[0];
+    
+    if (user.subscription_type === 'trial') {
+        if (!user.trial_end || user.trial_end >= today) {
+            return next();
+        } else {
+            return res.status(403).json({ error: 'Essai gratuit expiré' });
+        }
+    }
+    
+    if (user.subscription_type === 'premium') {
+        if (user.subscription_end && user.subscription_end >= today) {
+            return next();
+        } else {
+            return res.status(403).json({ error: 'Abonnement expiré' });
+        }
+    }
+    
+    next();
+};
+
 initDatabase();
 
 app.get('/api/test', (req, res) => {
@@ -104,10 +150,13 @@ app.post('/api/auth/register', async (req, res) => {
         }
 
         const hashedPassword = await bcrypt.hash(password, 10);
+        const trialEnd = new Date();
+        trialEnd.setDate(trialEnd.getDate() + 14);
+        const trialEndDate = trialEnd.toISOString().split('T')[0];
         
         db.run(
-            'INSERT INTO users (email, password, name) VALUES (?, ?, ?)', 
-            [email, hashedPassword, name], 
+            'INSERT INTO users (email, password, name, trial_end) VALUES (?, ?, ?, ?)', 
+            [email, hashedPassword, name, trialEndDate], 
             function(err) {
                 if (err) {
                     if (err.message.includes('UNIQUE constraint failed')) {
@@ -117,12 +166,14 @@ app.post('/api/auth/register', async (req, res) => {
                 }
                 
                 res.json({ 
-                    message: 'Compte créé avec succès', 
+                    message: 'Compte créé avec succès - Essai gratuit de 14 jours',
                     user: { 
                         id: this.lastID, 
                         email: email, 
                         name: name,
-                        role: 'user'
+                        role: 'user',
+                        subscription_type: 'trial',
+                        trial_end: trialEndDate
                     } 
                 });
             }
@@ -157,6 +208,15 @@ app.post('/api/auth/login', async (req, res) => {
                     return res.status(401).json({ error: 'Mot de passe incorrect' });
                 }
 
+                const today = new Date().toISOString().split('T')[0];
+                let subscriptionStatus = 'active';
+                
+                if (user.subscription_type === 'trial' && user.trial_end < today) {
+                    subscriptionStatus = 'trial_expired';
+                } else if (user.subscription_type === 'premium' && user.subscription_end < today) {
+                    subscriptionStatus = 'premium_expired';
+                }
+
                 res.json({ 
                     message: 'Connexion réussie', 
                     token: user.id.toString(),
@@ -164,7 +224,11 @@ app.post('/api/auth/login', async (req, res) => {
                         id: user.id, 
                         email: user.email, 
                         name: user.name,
-                        role: user.role
+                        role: user.role,
+                        subscription_type: user.subscription_type,
+                        subscription_status: subscriptionStatus,
+                        trial_end: user.trial_end,
+                        subscription_end: user.subscription_end
                     } 
                 });
             }
@@ -174,7 +238,89 @@ app.post('/api/auth/login', async (req, res) => {
     }
 });
 
-app.get('/api/products', (req, res) => {
+app.post('/api/subscribe/premium', authenticateToken, (req, res) => {
+    const user_id = req.user.id;
+    const { duration_months = 1 } = req.body;
+    
+    const startDate = new Date().toISOString().split('T')[0];
+    const endDate = new Date();
+    endDate.setMonth(endDate.getMonth() + parseInt(duration_months));
+    const endDateStr = endDate.toISOString().split('T')[0];
+    
+    db.run(
+        'UPDATE users SET subscription_type = ?, subscription_start = ?, subscription_end = ? WHERE id = ?',
+        ['premium', startDate, endDateStr, user_id],
+        function(err) {
+            if (err) {
+                return res.status(500).json({ error: 'Erreur mise à jour abonnement' });
+            }
+            
+            db.run(
+                'INSERT INTO subscriptions (user_id, type, start_date, end_date) VALUES (?, ?, ?, ?)',
+                [user_id, 'premium', startDate, endDateStr]
+            );
+            
+            res.json({
+                message: `Abonnement premium activé pour ${duration_months} mois`,
+                subscription: {
+                    type: 'premium',
+                    start_date: startDate,
+                    end_date: endDateStr,
+                    duration_months: duration_months
+                }
+            });
+        }
+    );
+});
+
+app.get('/api/admin/dashboard', authenticateToken, requireAdmin, (req, res) => {
+    const today = new Date().toISOString().split('T')[0];
+    
+    const queries = {
+        totalUsers: 'SELECT COUNT(*) as count FROM users WHERE role = "user"',
+        newUsersToday: 'SELECT COUNT(*) as count FROM users WHERE DATE(created_at) = ? AND role = "user"',
+        trialUsers: `SELECT COUNT(*) as count FROM users WHERE subscription_type = 'trial' AND trial_end >= ? AND role = "user"`,
+        premiumUsers: `SELECT COUNT(*) as count FROM users WHERE subscription_type = 'premium' AND subscription_end >= ? AND role = "user"`,
+        expiredTrials: `SELECT COUNT(*) as count FROM users WHERE subscription_type = 'trial' AND trial_end < ? AND role = "user"`,
+        totalSales: 'SELECT COUNT(*) as count FROM sales',
+        revenue: 'SELECT SUM(total_price) as total FROM sales',
+        recentUsers: `SELECT id, email, name, subscription_type, trial_end, subscription_end, created_at 
+                     FROM users WHERE role = "user" ORDER BY created_at DESC LIMIT 10`
+    };
+
+    db.get(queries.totalUsers, (err, totalUsers) => {
+        db.get(queries.newUsersToday, [today], (err, newUsersToday) => {
+            db.get(queries.trialUsers, [today], (err, trialUsers) => {
+                db.get(queries.premiumUsers, [today], (err, premiumUsers) => {
+                    db.get(queries.expiredTrials, [today], (err, expiredTrials) => {
+                        db.get(queries.totalSales, (err, totalSales) => {
+                            db.get(queries.revenue, (err, revenue) => {
+                                db.all(queries.recentUsers, (err, recentUsers) => {
+                                    res.json({
+                                        stats: {
+                                            totalUsers: totalUsers.count,
+                                            newUsersToday: newUsersToday.count,
+                                            trialUsers: trialUsers.count,
+                                            premiumUsers: premiumUsers.count,
+                                            expiredTrials: expiredTrials.count,
+                                            totalSales: totalSales.count,
+                                            totalRevenue: revenue.total || 0
+                                        },
+                                        recentUsers: recentUsers,
+                                        serverStatus: 'online',
+                                        lastUpdated: new Date()
+                                    });
+                                });
+                            });
+                        });
+                    });
+                });
+            });
+        });
+    });
+});
+
+app.get('/api/products', authenticateToken, checkSubscription, (req, res) => {
     db.all('SELECT * FROM products ORDER BY created_at DESC', (err, products) => {
         if (err) {
             return res.status(500).json({ error: 'Erreur base de données' });
@@ -183,7 +329,7 @@ app.get('/api/products', (req, res) => {
     });
 });
 
-app.post('/api/sales', authenticateToken, (req, res) => {
+app.post('/api/sales', authenticateToken, checkSubscription, (req, res) => {
     const { product_id, quantity } = req.body;
     const user_id = req.user.id;
 
@@ -231,7 +377,7 @@ app.post('/api/sales', authenticateToken, (req, res) => {
     });
 });
 
-app.get('/api/my-sales', authenticateToken, (req, res) => {
+app.get('/api/my-sales', authenticateToken, checkSubscription, (req, res) => {
     const user_id = req.user.id;
 
     db.all(
@@ -252,7 +398,7 @@ app.get('/api/my-sales', authenticateToken, (req, res) => {
 
 app.get('/api/admin/stats', authenticateToken, requireAdmin, (req, res) => {
     const queries = {
-        userCount: 'SELECT COUNT(*) as count FROM users',
+        userCount: 'SELECT COUNT(*) as count FROM users WHERE role = "user"',
         productCount: 'SELECT COUNT(*) as count FROM products',
         totalSales: 'SELECT COUNT(*) as count FROM sales',
         revenue: 'SELECT SUM(total_price) as total FROM sales'
@@ -307,7 +453,7 @@ app.post('/api/admin/products', authenticateToken, requireAdmin, (req, res) => {
 
 app.get('/api/admin/users', authenticateToken, requireAdmin, (req, res) => {
     db.all(
-        'SELECT id, email, name, role, created_at FROM users ORDER BY created_at DESC',
+        'SELECT id, email, name, role, subscription_type, trial_end, subscription_end, created_at FROM users ORDER BY created_at DESC',
         (err, users) => {
             if (err) {
                 return res.status(500).json({ error: 'Erreur base de données' });
