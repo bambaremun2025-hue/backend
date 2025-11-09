@@ -343,7 +343,7 @@ db.serialize(() => {
             [product_id, quantity, total_amount],
             function(err) {
                 if (err) {
-                    return res.status(500).json({ error: 'Erreur lors de l\\'enregistrement' });
+                    return res.status(500).json({ error: 'Erreur lors de l\'enregistrement' });
                 }
                 res.json({ message: 'Vente enregistrée', saleId: this.lastID });
             }
