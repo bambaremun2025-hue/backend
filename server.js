@@ -67,7 +67,6 @@ const initDatabase = () => {
             FOREIGN KEY (user_id) REFERENCES users (id)
         )`);
 
-        // Créer le compte admin par défaut
         const adminEmail = 'samaboutiksen@gmail.com';
         const adminPassword = 'Egghead1!';
         const adminName = 'Admin';
@@ -85,13 +84,13 @@ const initDatabase = () => {
                     [adminEmail, hashedPassword, adminName, 'admin', trialEnd.toISOString()],
                     function(err) {
                         if (!err) {
-                            console.log('✅ Compte admin créé avec succès');
+                            console.log('Compte admin créé avec succès');
                         }
                     }
                 );
             } else if (row.role !== 'admin') {
                 db.run('UPDATE users SET role = ? WHERE email = ?', ['admin', adminEmail]);
-                console.log('✅ Compte existant promu admin');
+                console.log('Compte existant promu admin');
             }
         });
     });
@@ -100,7 +99,6 @@ const initDatabase = () => {
 db.serialize(() => {
     initDatabase();
     
-    // Middleware pour vérifier le rôle admin
     const requireAdmin = (req, res, next) => {
         const authHeader = req.headers.authorization;
         
@@ -172,7 +170,6 @@ db.serialize(() => {
         });
     });
 
-    // Route pour créer un paiement mensuel Paydunya
     app.post('/api/payments/create-monthly', (req, res) => {
         const { userId, customerEmail, customerName } = req.body;
         
@@ -180,10 +177,7 @@ db.serialize(() => {
             return res.status(400).json({ error: 'Données manquantes' });
         }
 
-        const amount = 15000; // 15k FCFA par mois
-        
-        // ICI TU INTÈGRES TON CODE PAYDUNYA EXISTANT
-        // Remplacer cette partie par ton code Paydunya de test/production
+        const amount = 15000;
         
         const paydunyaData = {
             amount: amount,
@@ -194,11 +188,9 @@ db.serialize(() => {
             cancel_url: "https://ton-site.com/payment-cancel"
         };
 
-        // Simulation de création de paiement (à remplacer par ton code Paydunya)
         const invoiceId = 'INV_' + Date.now();
         const paymentUrl = 'https://paydunya.com/sandbox/checkout/' + invoiceId;
         
-        // Enregistrer le paiement en base
         db.run(
             `INSERT INTO payments (user_id, amount, status, paydunya_invoice_id, paydunya_payment_url) VALUES (?, ?, ?, ?, ?)`,
             [userId, amount, 'pending', invoiceId, paymentUrl],
@@ -218,7 +210,6 @@ db.serialize(() => {
         );
     });
 
-    // Route pour confirmer un paiement réussi
     app.post('/api/payments/confirm', (req, res) => {
         const { invoice_id, user_id } = req.body;
         
@@ -227,13 +218,8 @@ db.serialize(() => {
                 return res.status(404).json({ error: 'Paiement non trouvé' });
             }
 
-            // ICI TU VÉRIFIES AVEC L'API PAYDUNYA SI LE PAIEMENT EST RÉUSSI
-            // Remplacer par ton code de vérification Paydunya
-
-            // Mettre à jour le statut du paiement
             db.run('UPDATE payments SET status = ? WHERE paydunya_invoice_id = ?', ['completed', invoice_id]);
 
-            // Activer l'abonnement premium pour 1 mois
             const subscriptionEnd = new Date();
             subscriptionEnd.setMonth(subscriptionEnd.getMonth() + 1);
 
@@ -254,7 +240,6 @@ db.serialize(() => {
         });
     });
 
-    // Route pour promouvoir un utilisateur en admin
     app.post('/api/admin/promote', (req, res) => {
         const { email } = req.body;
         
@@ -273,7 +258,6 @@ db.serialize(() => {
         );
     });
 
-    // Route pour gérer les abonnements par email
     app.post('/api/admin/manage-subscription', (req, res) => {
         const { email, action } = req.body;
         
@@ -359,7 +343,7 @@ db.serialize(() => {
             [product_id, quantity, total_amount],
             function(err) {
                 if (err) {
-                    return res.status(500).json({ error: 'Erreur lors de l'enregistrement' });
+                    return res.status(500).json({ error: 'Erreur lors de l\\'enregistrement' });
                 }
                 res.json({ message: 'Vente enregistrée', saleId: this.lastID });
             }
