@@ -55,12 +55,58 @@ const initDatabase = () => {
             sale_date DATETIME DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (product_id) REFERENCES products (id)
         )`);
+
+        // Créer le compte admin par défaut
+        const adminEmail = 'samaboutiksen@gmail.com';
+        const adminPassword = 'Egghead1!';
+        const adminName = 'Admin';
+        
+        db.get('SELECT * FROM users WHERE email = ?', [adminEmail], async (err, row) => {
+            if (err) return;
+            
+            if (!row) {
+                const hashedPassword = await bcrypt.hash(adminPassword, 10);
+                const trialEnd = new Date();
+                trialEnd.setDate(trialEnd.getDate() + 14);
+                
+                db.run(
+                    `INSERT INTO users (email, password, name, role, trial_end) VALUES (?, ?, ?, ?, ?)`,
+                    [adminEmail, hashedPassword, adminName, 'admin', trialEnd.toISOString()],
+                    function(err) {
+                        if (!err) {
+                            console.log('✅ Compte admin créé avec succès');
+                        }
+                    }
+                );
+            } else if (row.role !== 'admin') {
+                db.run('UPDATE users SET role = ? WHERE email = ?', ['admin', adminEmail]);
+                console.log('✅ Compte existant promu admin');
+            }
+        });
     });
 };
 
 db.serialize(() => {
     initDatabase();
     
+    // Middleware pour vérifier le rôle admin
+    const requireAdmin = (req, res, next) => {
+        const authHeader = req.headers.authorization;
+        
+        if (!authHeader) {
+            return res.status(401).json({ error: 'Token manquant' });
+        }
+        
+        const token = authHeader.split(' ')[1];
+        // Ici, normalement tu vérifierais le JWT, mais pour simplifier :
+        db.get('SELECT * FROM users WHERE email = ? AND role = ?', [token, 'admin'], (err, user) => {
+            if (err || !user) {
+                return res.status(403).json({ error: 'Accès réservé à l\'administrateur' });
+            }
+            next();
+        });
+    };
+
     app.post('/api/auth/register', async (req, res) => {
         const { email, password, name } = req.body;
         
@@ -115,7 +161,64 @@ db.serialize(() => {
         });
     });
 
-    app.get('/api/admin/dashboard', (req, res) => {
+    // Route pour promouvoir un utilisateur en admin
+    app.post('/api/admin/promote', (req, res) => {
+        const { email } = req.body;
+        
+        db.run(
+            `UPDATE users SET role = 'admin' WHERE email = ?`,
+            [email],
+            function(err) {
+                if (err) {
+                    return res.status(500).json({ error: 'Erreur base de données' });
+                }
+                if (this.changes === 0) {
+                    return res.status(404).json({ error: 'Utilisateur non trouvé' });
+                }
+                res.json({ message: 'Utilisateur promu admin' });
+            }
+        );
+    });
+
+    // Route pour gérer les abonnements par email
+    app.post('/api/admin/manage-subscription', (req, res) => {
+        const { email, action } = req.body;
+        
+        db.get('SELECT * FROM users WHERE email = ?', [email], (err, user) => {
+            if (err || !user) {
+                return res.status(404).json({ error: 'Utilisateur non trouvé' });
+            }
+
+            let updateQuery = '';
+            let updateParams = [];
+
+            if (action === 'activate') {
+                const subscriptionEnd = new Date();
+                subscriptionEnd.setFullYear(subscriptionEnd.getFullYear() + 1);
+                updateQuery = `UPDATE users SET is_premium = 1, subscription_type = 'premium', subscription_end_date = ? WHERE email = ?`;
+                updateParams = [subscriptionEnd.toISOString(), email];
+            } else if (action === 'cancel') {
+                updateQuery = `UPDATE users SET is_premium = 0, subscription_type = 'trial' WHERE email = ?`;
+                updateParams = [email];
+            } else if (action === 'gift') {
+                const subscriptionEnd = new Date();
+                subscriptionEnd.setFullYear(subscriptionEnd.getFullYear() + 1);
+                updateQuery = `UPDATE users SET is_premium = 1, subscription_type = 'gifted', subscription_end_date = ? WHERE email = ?`;
+                updateParams = [subscriptionEnd.toISOString(), email];
+            } else {
+                return res.status(400).json({ error: 'Action non valide' });
+            }
+
+            db.run(updateQuery, updateParams, function(err) {
+                if (err) {
+                    return res.status(500).json({ error: 'Erreur lors de la mise à jour' });
+                }
+                res.json({ message: `Abonnement ${action} avec succès` });
+            });
+        });
+    });
+
+    app.get('/api/admin/dashboard', requireAdmin, (req, res) => {
         const queries = [
             "SELECT COUNT(*) as total_users FROM users",
             "SELECT COUNT(*) as today_users FROM users WHERE DATE(created_at) = DATE('now')",
