@@ -56,6 +56,17 @@ const initDatabase = () => {
             FOREIGN KEY (product_id) REFERENCES products (id)
         )`);
 
+        db.run(`CREATE TABLE IF NOT EXISTS payments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            amount REAL NOT NULL,
+            status TEXT DEFAULT 'pending',
+            paydunya_invoice_id TEXT,
+            paydunya_payment_url TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users (id)
+        )`);
+
         // Créer le compte admin par défaut
         const adminEmail = 'samaboutiksen@gmail.com';
         const adminPassword = 'Egghead1!';
@@ -98,7 +109,6 @@ db.serialize(() => {
         }
         
         const token = authHeader.split(' ')[1];
-        // Ici, normalement tu vérifierais le JWT, mais pour simplifier :
         db.get('SELECT * FROM users WHERE email = ? AND role = ?', [token, 'admin'], (err, user) => {
             if (err || !user) {
                 return res.status(403).json({ error: 'Accès réservé à l\'administrateur' });
@@ -155,9 +165,92 @@ db.serialize(() => {
                     role: user.role,
                     subscription_type: user.subscription_type,
                     is_premium: user.is_premium,
-                    trial_end: user.trial_end
+                    trial_end: user.trial_end,
+                    subscription_end_date: user.subscription_end_date
                 }
             });
+        });
+    });
+
+    // Route pour créer un paiement mensuel Paydunya
+    app.post('/api/payments/create-monthly', (req, res) => {
+        const { userId, customerEmail, customerName } = req.body;
+        
+        if (!userId || !customerEmail) {
+            return res.status(400).json({ error: 'Données manquantes' });
+        }
+
+        const amount = 15000; // 15k FCFA par mois
+        
+        // ICI TU INTÈGRES TON CODE PAYDUNYA EXISTANT
+        // Remplacer cette partie par ton code Paydunya de test/production
+        
+        const paydunyaData = {
+            amount: amount,
+            description: "Abonnement Premium Mensuel - 15,000 FCFA",
+            customer_name: customerName || "Client",
+            customer_email: customerEmail,
+            return_url: "https://ton-site.com/payment-success",
+            cancel_url: "https://ton-site.com/payment-cancel"
+        };
+
+        // Simulation de création de paiement (à remplacer par ton code Paydunya)
+        const invoiceId = 'INV_' + Date.now();
+        const paymentUrl = 'https://paydunya.com/sandbox/checkout/' + invoiceId;
+        
+        // Enregistrer le paiement en base
+        db.run(
+            `INSERT INTO payments (user_id, amount, status, paydunya_invoice_id, paydunya_payment_url) VALUES (?, ?, ?, ?, ?)`,
+            [userId, amount, 'pending', invoiceId, paymentUrl],
+            function(err) {
+                if (err) {
+                    return res.status(500).json({ error: 'Erreur base de données' });
+                }
+                
+                res.json({
+                    success: true,
+                    message: 'Paiement créé avec succès',
+                    payment_url: paymentUrl,
+                    invoice_id: invoiceId,
+                    amount: amount
+                });
+            }
+        );
+    });
+
+    // Route pour confirmer un paiement réussi
+    app.post('/api/payments/confirm', (req, res) => {
+        const { invoice_id, user_id } = req.body;
+        
+        db.get('SELECT * FROM payments WHERE paydunya_invoice_id = ? AND user_id = ?', [invoice_id, user_id], (err, payment) => {
+            if (err || !payment) {
+                return res.status(404).json({ error: 'Paiement non trouvé' });
+            }
+
+            // ICI TU VÉRIFIES AVEC L'API PAYDUNYA SI LE PAIEMENT EST RÉUSSI
+            // Remplacer par ton code de vérification Paydunya
+
+            // Mettre à jour le statut du paiement
+            db.run('UPDATE payments SET status = ? WHERE paydunya_invoice_id = ?', ['completed', invoice_id]);
+
+            // Activer l'abonnement premium pour 1 mois
+            const subscriptionEnd = new Date();
+            subscriptionEnd.setMonth(subscriptionEnd.getMonth() + 1);
+
+            db.run(
+                `UPDATE users SET is_premium = 1, subscription_type = 'premium', subscription_end_date = ? WHERE id = ?`,
+                [subscriptionEnd.toISOString(), user_id],
+                function(err) {
+                    if (err) {
+                        return res.status(500).json({ error: 'Erreur activation abonnement' });
+                    }
+                    res.json({ 
+                        success: true,
+                        message: 'Abonnement premium mensuel activé avec succès',
+                        subscription_end: subscriptionEnd.toISOString()
+                    });
+                }
+            );
         });
     });
 
@@ -194,7 +287,7 @@ db.serialize(() => {
 
             if (action === 'activate') {
                 const subscriptionEnd = new Date();
-                subscriptionEnd.setFullYear(subscriptionEnd.getFullYear() + 1);
+                subscriptionEnd.setMonth(subscriptionEnd.getMonth() + 1);
                 updateQuery = `UPDATE users SET is_premium = 1, subscription_type = 'premium', subscription_end_date = ? WHERE email = ?`;
                 updateParams = [subscriptionEnd.toISOString(), email];
             } else if (action === 'cancel') {
@@ -202,7 +295,7 @@ db.serialize(() => {
                 updateParams = [email];
             } else if (action === 'gift') {
                 const subscriptionEnd = new Date();
-                subscriptionEnd.setFullYear(subscriptionEnd.getFullYear() + 1);
+                subscriptionEnd.setMonth(subscriptionEnd.getMonth() + 1);
                 updateQuery = `UPDATE users SET is_premium = 1, subscription_type = 'gifted', subscription_end_date = ? WHERE email = ?`;
                 updateParams = [subscriptionEnd.toISOString(), email];
             } else {
@@ -225,7 +318,8 @@ db.serialize(() => {
             "SELECT COUNT(*) as active_trials FROM users WHERE subscription_type = 'trial' AND trial_end > DATE('now')",
             "SELECT COUNT(*) as premium_users FROM users WHERE is_premium = 1",
             "SELECT COUNT(*) as expired_trials FROM users WHERE subscription_type = 'trial' AND trial_end <= DATE('now')",
-            "SELECT COALESCE(SUM(total_amount), 0) as total_revenue FROM sales"
+            "SELECT COALESCE(SUM(total_amount), 0) as total_revenue FROM sales",
+            "SELECT COALESCE(SUM(amount), 0) as total_payments FROM payments WHERE status = 'completed'"
         ];
 
         const results = {};
@@ -248,24 +342,6 @@ db.serialize(() => {
         });
     });
 
-    app.post('/api/subscribe/premium', (req, res) => {
-        const { userId } = req.body;
-        
-        const subscriptionEnd = new Date();
-        subscriptionEnd.setFullYear(subscriptionEnd.getFullYear() + 1);
-
-        db.run(
-            `UPDATE users SET is_premium = 1, subscription_type = 'premium', subscription_end_date = ? WHERE id = ?`,
-            [subscriptionEnd.toISOString(), userId],
-            function(err) {
-                if (err) {
-                    return res.status(500).json({ error: 'Erreur lors de l\'abonnement' });
-                }
-                res.json({ message: 'Abonnement premium activé' });
-            }
-        );
-    });
-
     app.get('/api/products', (req, res) => {
         db.all('SELECT * FROM products', [], (err, rows) => {
             if (err) {
@@ -283,7 +359,7 @@ db.serialize(() => {
             [product_id, quantity, total_amount],
             function(err) {
                 if (err) {
-                    return res.status(500).json({ error: 'Erreur lors de l\'enregistrement' });
+                    return res.status(500).json({ error: 'Erreur lors de l'enregistrement' });
                 }
                 res.json({ message: 'Vente enregistrée', saleId: this.lastID });
             }
