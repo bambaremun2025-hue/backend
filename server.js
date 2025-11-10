@@ -389,4 +389,95 @@ app.get('/api/admin/dashboard', requireAdmin, async (req, res) => {
     }
 });
 
-app.get('/api/st
+app.get('/api/stats/public', async (req, res) => {
+    try {
+        const { count: totalUsers } = await supabase
+            .from('profiles')
+            .select('*', { count: 'exact', head: true });
+
+        const { count: activeUsers } = await supabase
+            .from('profiles')
+            .select('*', { count: 'exact', head: true })
+            .or('subscription_type.eq.premium,and(trial_ends_at.gt.' + new Date().toISOString() + ',subscription_type.eq.trial)');
+
+        const { data: recentPayments } = await supabase
+            .from('payments')
+            .select('amount, created_at')
+            .eq('status', 'completed')
+            .order('created_at', { ascending: false })
+            .limit(10);
+
+        res.json({
+            total_users: totalUsers || 0,
+            active_users: activeUsers || 0,
+            recent_payments: recentPayments || []
+        });
+
+    } catch (error) {
+        console.error('Erreur stats publiques:', error);
+        res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
+
+app.post('/api/webhooks/naboostart', async (req, res) => {
+    try {
+        const webhookSecret = 'be75fcdd57db5bd3bea0c99527997c06161481f09033f36d7e83f1c87bc0afed';
+        const signature = req.headers['x-naboostart-signature'];
+        
+        if (!signature) {
+            return res.status(401).json({ error: 'Signature manquante' });
+        }
+
+        const payload = JSON.stringify(req.body);
+        
+        const { payment_id, status, metadata } = req.body;
+        
+        if (status === 'completed') {
+            const { data: payment, error: paymentError } = await supabase
+                .from('payments')
+                .select('*')
+                .eq('naboostart_payment_id', payment_id)
+                .single();
+
+            if (paymentError || !payment) {
+                return res.status(404).json({ error: 'Paiement non trouvé' });
+            }
+
+            await supabase
+                .from('payments')
+                .update({ status: 'completed' })
+                .eq('naboostart_payment_id', payment_id);
+
+            const subscriptionEnd = new Date();
+            subscriptionEnd.setMonth(subscriptionEnd.getMonth() + 1);
+
+            await supabase
+                .from('profiles')
+                .update({ 
+                    subscription_type: 'premium',
+                    subscription_end_date: subscriptionEnd.toISOString()
+                })
+                .eq('id', payment.user_id);
+
+            console.log('Abonnement activé pour user:', payment.user_id);
+        }
+
+        res.json({ success: true });
+
+    } catch (error) {
+        console.error('Erreur webhook:', error);
+        res.status(500).json({ error: 'Erreur webhook' });
+    }
+});
+
+app.get('/', (req, res) => {
+    res.json({ 
+        message: 'Backend fonctionnel',
+        version: '1.0.0',
+        status: 'online'
+    });
+});
+
+app.listen(PORT, () => {
+    console.log(`Serveur démarré sur le port ${PORT}`);
+});
