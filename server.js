@@ -159,107 +159,6 @@ app.post('/api/auth/login', async (req, res) => {
     }
 });
 
-app.get('/api/stats/public', async (req, res) => {
-    try {
-        const { count: totalUsers } = await supabase
-            .from('profiles')
-            .select('*', { count: 'exact', head: true });
-
-        const today = new Date().toISOString().split('T')[0];
-        const { count: todayUsers } = await supabase
-            .from('profiles')
-            .select('*', { count: 'exact', head: true })
-            .gte('created_at', today);
-
-        const { count: activeTrials } = await supabase
-            .from('profiles')
-            .select('*', { count: 'exact', head: true })
-            .eq('subscription_type', 'trial')
-            .gt('trial_ends_at', new Date().toISOString());
-
-        const { count: premiumUsers } = await supabase
-            .from('profiles')
-            .select('*', { count: 'exact', head: true })
-            .eq('subscription_type', 'premium');
-
-        const { count: expiredTrials } = await supabase
-            .from('profiles')
-            .select('*', { count: 'exact', head: true })
-            .eq('subscription_type', 'trial')
-            .lt('trial_ends_at', new Date().toISOString());
-
-        const { data: revenueData } = await supabase
-            .from('payments')
-            .select('amount')
-            .eq('status', 'completed');
-
-        const totalRevenue = revenueData ? revenueData.reduce((sum, payment) => sum + payment.amount, 0) : 0;
-
-        res.json({
-            total_users: totalUsers || 0,
-            today_users: todayUsers || 0,
-            active_trials: activeTrials || 0,
-            premium_users: premiumUsers || 0,
-            expired_trials: expiredTrials || 0,
-            total_revenue: totalRevenue
-        });
-
-    } catch (error) {
-        res.status(500).json({ error: 'Erreur serveur' });
-    }
-});
-
-app.get('/api/admin/dashboard', requireAdmin, async (req, res) => {
-    try {
-        const { count: totalUsers } = await supabase
-            .from('profiles')
-            .select('*', { count: 'exact', head: true });
-
-        const today = new Date().toISOString().split('T')[0];
-        const { count: todayUsers } = await supabase
-            .from('profiles')
-            .select('*', { count: 'exact', head: true })
-            .gte('created_at', today);
-
-        const { count: activeTrials } = await supabase
-            .from('profiles')
-            .select('*', { count: 'exact', head: true })
-            .eq('subscription_type', 'trial')
-            .gt('trial_ends_at', new Date().toISOString());
-
-        const { count: premiumUsers } = await supabase
-            .from('profiles')
-            .select('*', { count: 'exact', head: true })
-            .eq('subscription_type', 'premium');
-
-        const { count: expiredTrials } = await supabase
-            .from('profiles')
-            .select('*', { count: 'exact', head: true })
-            .eq('subscription_type', 'trial')
-            .lt('trial_ends_at', new Date().toISOString());
-
-        const { data: revenueData } = await supabase
-            .from('payments')
-            .select('amount')
-            .eq('status', 'completed');
-
-        const totalRevenue = revenueData ? revenueData.reduce((sum, payment) => sum + payment.amount, 0) : 0;
-
-        res.json({
-            total_users: totalUsers || 0,
-            today_users: todayUsers || 0,
-            active_trials: activeTrials || 0,
-            premium_users: premiumUsers || 0,
-            expired_trials: expiredTrials || 0,
-            total_revenue: totalRevenue
-        });
-
-    } catch (error) {
-        console.error('Erreur dashboard:', error);
-        res.status(500).json({ error: 'Erreur serveur' });
-    }
-});
-
 app.post('/api/payments/create-monthly', async (req, res) => {
     try {
         const { userId, customerEmail, customerName } = req.body;
@@ -300,6 +199,74 @@ app.post('/api/payments/create-monthly', async (req, res) => {
     } catch (error) {
         console.error('Erreur paiement:', error);
         res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
+
+app.post('/api/payments/naboostart-initiate', async (req, res) => {
+    try {
+        const { userId, amount, customerEmail, customerPhone, customerName } = req.body;
+        
+        const naboopyPayload = {
+            amount: amount * 100,
+            currency: "XOF",
+            description: "Abonnement Premium Mensuel",
+            customer_email: customerEmail,
+            customer_phone_number: customerPhone,
+            customer_name: customerName,
+            return_url: "https://ton-site.com/payment/success",
+            cancel_url: "https://ton-site.com/payment/cancel",
+            metadata: {
+                user_id: userId,
+                product: "abonnement_premium_mensuel"
+            }
+        };
+
+        const naboopyResponse = await fetch('https://api.naboostart.com/v1/payments/initiate', {
+            method: 'POST',
+            headers: {
+                'Authorization': 'Bearer naboo-520d304a-a41f-4791-b152-d156716ca129.24ed6ed2-4904-4aea-a6de-41b1eabf135c',
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(naboopyPayload)
+        });
+        
+        const paymentData = await naboopyResponse.json();
+        
+        if (paymentData.success) {
+            const { data: dbData, error: dbError } = await supabase
+                .from('payments')
+                .insert([
+                    {
+                        user_id: userId,
+                        amount: amount,
+                        status: 'pending',
+                        naboostart_payment_id: paymentData.data.payment_id,
+                        naboostart_payment_url: paymentData.data.payment_url,
+                        customer_email: customerEmail,
+                        customer_phone: customerPhone
+                    }
+                ])
+                .select();
+            
+            res.json({
+                success: true,
+                payment_url: paymentData.data.payment_url,
+                payment_id: paymentData.data.payment_id,
+                message: "Paiement initié avec succès"
+            });
+        } else {
+            res.status(400).json({ 
+                success: false,
+                error: paymentData.message || "Erreur lors de l'initiation du paiement"
+            });
+        }
+        
+    } catch (error) {
+        console.error('Erreur NABOOPAY:', error);
+        res.status(500).json({ 
+            success: false,
+            error: 'Erreur de connexion au service de paiement' 
+        });
     }
 });
 
@@ -371,228 +338,55 @@ app.post('/api/admin/promote', requireAdmin, async (req, res) => {
     }
 });
 
-app.get('/api/products', async (req, res) => {
+app.get('/api/admin/dashboard', requireAdmin, async (req, res) => {
     try {
-        const { data: products, error } = await supabase
-            .from('products')
-            .select('*');
+        const { count: totalUsers } = await supabase
+            .from('profiles')
+            .select('*', { count: 'exact', head: true });
 
-        if (error) {
-            return res.status(500).json({ error: 'Erreur base de données' });
-        }
+        const today = new Date().toISOString().split('T')[0];
+        const { count: todayUsers } = await supabase
+            .from('profiles')
+            .select('*', { count: 'exact', head: true })
+            .gte('created_at', today);
 
-        res.json(products);
+        const { count: activeTrials } = await supabase
+            .from('profiles')
+            .select('*', { count: 'exact', head: true })
+            .eq('subscription_type', 'trial')
+            .gt('trial_ends_at', new Date().toISOString());
+
+        const { count: premiumUsers } = await supabase
+            .from('profiles')
+            .select('*', { count: 'exact', head: true })
+            .eq('subscription_type', 'premium');
+
+        const { count: expiredTrials } = await supabase
+            .from('profiles')
+            .select('*', { count: 'exact', head: true })
+            .eq('subscription_type', 'trial')
+            .lt('trial_ends_at', new Date().toISOString());
+
+        const { data: revenueData } = await supabase
+            .from('payments')
+            .select('amount')
+            .eq('status', 'completed');
+
+        const totalRevenue = revenueData ? revenueData.reduce((sum, payment) => sum + payment.amount, 0) : 0;
+
+        res.json({
+            total_users: totalUsers || 0,
+            today_users: todayUsers || 0,
+            active_trials: activeTrials || 0,
+            premium_users: premiumUsers || 0,
+            expired_trials: expiredTrials || 0,
+            total_revenue: totalRevenue
+        });
 
     } catch (error) {
-        console.error('Erreur produits:', error);
+        console.error('Erreur dashboard:', error);
         res.status(500).json({ error: 'Erreur serveur' });
     }
 });
 
-app.post('/api/sales', async (req, res) => {
-    try {
-        const { product_id, quantity, total_amount, user_id } = req.body;
-        
-        const { data: saleData, error } = await supabase
-            .from('sales')
-            .insert([
-                {
-                    product_id: product_id,
-                    quantity: quantity,
-                    total_amount: total_amount,
-                    user_id: user_id
-                }
-            ])
-            .select();
-
-        if (error) {
-            return res.status(500).json({ error: 'Erreur lors de l\'enregistrement' });
-        }
-
-        res.json({ message: 'Vente enregistrée', saleId: saleData[0].id });
-
-    } catch (error) {
-        console.error('Erreur vente:', error);
-        res.status(500).json({ error: 'Erreur serveur' });
-    }
-});
-
-app.get('/api/health', (req, res) => {
-    res.json({
-        status: 'OK',
-        server: 'active',
-        timestamp: new Date().toISOString()
-    });
-});
-
-app.get('/', (req, res) => {
-    res.json({
-        message: 'Backend is running!',
-        status: 'OK'
-    });
-});
-const crypto = require('crypto');
-
-const verifyNaboostartSignature = (payload, signature, secret) => {
-    const computedSignature = crypto
-        .createHmac('sha256', secret)
-        .update(JSON.stringify(payload))
-        .digest('hex');
-    return computedSignature === signature;
-};
-app.post('/api/payments/naboostart-initiate', async (req, res) => {
-    try {
-        const { userId, amount, customerEmail, customerPhone, customerName } = req.body;
-        
-        const naboopyPayload = {
-            amount: amount * 100,
-            currency: "XOF",
-            description: "Abonnement Premium Mensuel",
-            customer_email: customerEmail,
-            customer_phone_number: customerPhone,
-            customer_name: customerName,
-            return_url: "https://ton-site.com/payment/success",
-            cancel_url: "https://ton-site.com/payment/cancel",
-            metadata: {
-                user_id: userId,
-                product: "abonnement_premium_mensuel"
-            }
-        };
-
-        const naboopyResponse = await fetch('https://api.naboostart.com/v1/payments/initiate', {
-            method: 'POST',
-            headers: {
-                'Authorization': 'Bearer naboo-520d304a-a41f-4791-b152-d156716ca129.24ed6ed2-4904-4aea-a6de-41b1eabf135c',
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(naboopyPayload)
-        });
-        
-        const paymentData = await naboopyResponse.json();
-        
-        if (paymentData.success) {
-            const { data: dbData, error: dbError } = await supabase
-                .from('payments')
-                .insert([
-                    {
-                        user_id: userId,
-                        amount: amount,
-                        status: 'pending',
-                        naboostart_payment_id: paymentData.data.payment_id,
-                        naboostart_payment_url: paymentData.data.payment_url,
-                        customer_email: customerEmail,
-                        customer_phone: customerPhone
-                    }
-                ])
-                .select();
-            
-            res.json({
-                success: true,
-                payment_url: paymentData.data.payment_url,
-                payment_id: paymentData.data.payment_id,
-                message: "Paiement initié avec succès"
-            });
-        } else {
-            res.status(400).json({ 
-                success: false,
-                error: paymentData.message || "Erreur lors de l'initiation du paiement"
-            });
-        }
-        
-    } catch (error) {
-        console.error('Erreur NABOOPAY:', error);
-        res.status(500).json({ 
-            success: false,
-            error: 'Erreur de connexion au service de paiement' 
-        });
-    }
-});
-    
-});
-app.post('/api/webhooks/naboostart', express.json({ verify: (req, res, buf) => {
-    req.rawBody = buf;
-}}), async (req, res) => {
-    try {
-        const signature = req.headers['x-naboostart-signature'];
-        const payload = req.body;
-        
-        const isValid = verifyNaboostartSignature(
-            payload, 
-            signature, 
-            'be75fcdd57db5bd3bea0c99527997c06161481f09033f36d7e83f1c87bc0afed'
-        );
-        
-        if (!isValid) {
-            console.error('Signature webhook invalide');
-            return res.status(401).json({ error: 'Signature invalide' });
-        }
-        
-        console.log('Webhook NABOOPAY:', {
-            payment_id: payload.payment_id,
-            status: payload.status,
-            amount: payload.amount
-        });
-        
-        if (payload.status === 'completed' || payload.status === 'success') {
-            const { error: paymentError } = await supabase
-                .from('payments')
-                .update({ 
-                    status: 'completed',
-                    completed_at: new Date().toISOString()
-                })
-                .eq('naboostart_payment_id', payload.payment_id);
-            
-            if (paymentError) {
-                console.error('Erreur paiement:', paymentError);
-            }
-            
-            const { data: payment } = await supabase
-                .from('payments')
-                .select('user_id')
-                .eq('naboostart_payment_id', payload.payment_id)
-                .single();
-            
-            if (payment && payment.user_id) {
-                const subscriptionEnd = new Date();
-                subscriptionEnd.setMonth(subscriptionEnd.getMonth() + 1);
-                
-                const { error: userError } = await supabase
-                    .from('profiles')
-                    .update({
-                        subscription_type: 'premium',
-                        subscription_end_date: subscriptionEnd.toISOString(),
-                        is_premium: true
-                    })
-                    .eq('id', payment.user_id);
-                
-                if (userError) {
-                    console.error('Erreur activation:', userError);
-                } else {
-                    console.log('Abonnement active pour user:', payment.user_id);
-                }
-            }
-        } else if (payload.status === 'failed' || payload.status === 'cancelled') {
-            await supabase
-                .from('payments')
-                .update({ status: 'failed' })
-                .eq('naboostart_payment_id', payload.payment_id);
-        }
-        
-        res.status(200).json({ 
-            received: true,
-            processed: true 
-        });
-        
-    } catch (error) {
-        console.error('Erreur webhook:', error);
-        res.status(200).json({ 
-            received: true,
-            error: error.message 
-        });
-    }
-});
-
-app.listen(PORT, () => {
-    console.log(`Serveur demarre sur le port ${PORT}`);
-});
-
+app.get('/api/st
