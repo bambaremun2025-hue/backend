@@ -12,11 +12,7 @@ const app = express();
 const PORT = process.env.PORT || 10000;
 
 app.use(cors({
-    origin: [
-        'https://4a5f0464c8f24a09bd2bc580e8c9401a-9ae7243f6c3f4aa0bdc46c3f9.fly.dev',
-        'http://localhost:3000',
-        'http://localhost:8080'
-    ],
+    origin: '*',
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization']
@@ -144,6 +140,107 @@ app.post('/api/auth/login', async (req, res) => {
     }
 });
 
+app.get('/api/stats/public', async (req, res) => {
+    try {
+        const { count: totalUsers } = await supabase
+            .from('profiles')
+            .select('*', { count: 'exact', head: true });
+
+        const today = new Date().toISOString().split('T')[0];
+        const { count: todayUsers } = await supabase
+            .from('profiles')
+            .select('*', { count: 'exact', head: true })
+            .gte('created_at', today);
+
+        const { count: activeTrials } = await supabase
+            .from('profiles')
+            .select('*', { count: 'exact', head: true })
+            .eq('subscription_type', 'trial')
+            .gt('trial_ends_at', new Date().toISOString());
+
+        const { count: premiumUsers } = await supabase
+            .from('profiles')
+            .select('*', { count: 'exact', head: true })
+            .eq('subscription_type', 'premium');
+
+        const { count: expiredTrials } = await supabase
+            .from('profiles')
+            .select('*', { count: 'exact', head: true })
+            .eq('subscription_type', 'trial')
+            .lt('trial_ends_at', new Date().toISOString());
+
+        const { data: revenueData } = await supabase
+            .from('payments')
+            .select('amount')
+            .eq('status', 'completed');
+
+        const totalRevenue = revenueData ? revenueData.reduce((sum, payment) => sum + payment.amount, 0) : 0;
+
+        res.json({
+            total_users: totalUsers || 0,
+            today_users: todayUsers || 0,
+            active_trials: activeTrials || 0,
+            premium_users: premiumUsers || 0,
+            expired_trials: expiredTrials || 0,
+            total_revenue: totalRevenue
+        });
+
+    } catch (error) {
+        res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
+
+app.get('/api/admin/dashboard', requireAdmin, async (req, res) => {
+    try {
+        const { count: totalUsers } = await supabase
+            .from('profiles')
+            .select('*', { count: 'exact', head: true });
+
+        const today = new Date().toISOString().split('T')[0];
+        const { count: todayUsers } = await supabase
+            .from('profiles')
+            .select('*', { count: 'exact', head: true })
+            .gte('created_at', today);
+
+        const { count: activeTrials } = await supabase
+            .from('profiles')
+            .select('*', { count: 'exact', head: true })
+            .eq('subscription_type', 'trial')
+            .gt('trial_ends_at', new Date().toISOString());
+
+        const { count: premiumUsers } = await supabase
+            .from('profiles')
+            .select('*', { count: 'exact', head: true })
+            .eq('subscription_type', 'premium');
+
+        const { count: expiredTrials } = await supabase
+            .from('profiles')
+            .select('*', { count: 'exact', head: true })
+            .eq('subscription_type', 'trial')
+            .lt('trial_ends_at', new Date().toISOString());
+
+        const { data: revenueData } = await supabase
+            .from('payments')
+            .select('amount')
+            .eq('status', 'completed');
+
+        const totalRevenue = revenueData ? revenueData.reduce((sum, payment) => sum + payment.amount, 0) : 0;
+
+        res.json({
+            total_users: totalUsers || 0,
+            today_users: todayUsers || 0,
+            active_trials: activeTrials || 0,
+            premium_users: premiumUsers || 0,
+            expired_trials: expiredTrials || 0,
+            total_revenue: totalRevenue
+        });
+
+    } catch (error) {
+        console.error('Erreur dashboard:', error);
+        res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
+
 app.post('/api/payments/create-monthly', async (req, res) => {
     try {
         const { userId, customerEmail, customerName } = req.body;
@@ -251,57 +348,6 @@ app.post('/api/admin/promote', requireAdmin, async (req, res) => {
 
     } catch (error) {
         console.error('Erreur promotion:', error);
-        res.status(500).json({ error: 'Erreur serveur' });
-    }
-});
-
-app.get('/api/admin/dashboard', requireAdmin, async (req, res) => {
-    try {
-        const { count: totalUsers, error: usersError } = await supabase
-            .from('profiles')
-            .select('*', { count: 'exact', head: true });
-
-        const today = new Date().toISOString().split('T')[0];
-        const { count: todayUsers, error: todayError } = await supabase
-            .from('profiles')
-            .select('*', { count: 'exact', head: true })
-            .gte('created_at', today);
-
-        const { count: activeTrials, error: trialsError } = await supabase
-            .from('profiles')
-            .select('*', { count: 'exact', head: true })
-            .eq('subscription_type', 'trial')
-            .gt('trial_ends_at', new Date().toISOString());
-
-        const { count: premiumUsers, error: premiumError } = await supabase
-            .from('profiles')
-            .select('*', { count: 'exact', head: true })
-            .eq('subscription_type', 'premium');
-
-        const { count: expiredTrials, error: expiredError } = await supabase
-            .from('profiles')
-            .select('*', { count: 'exact', head: true })
-            .eq('subscription_type', 'trial')
-            .lt('trial_ends_at', new Date().toISOString());
-
-        const { data: revenueData, error: revenueError } = await supabase
-            .from('payments')
-            .select('amount')
-            .eq('status', 'completed');
-
-        const totalRevenue = revenueData ? revenueData.reduce((sum, payment) => sum + payment.amount, 0) : 0;
-
-        res.json({
-            total_users: totalUsers || 0,
-            today_users: todayUsers || 0,
-            active_trials: activeTrials || 0,
-            premium_users: premiumUsers || 0,
-            expired_trials: expiredTrials || 0,
-            total_revenue: totalRevenue
-        });
-
-    } catch (error) {
-        console.error('Erreur dashboard:', error);
         res.status(500).json({ error: 'Erreur serveur' });
     }
 });
