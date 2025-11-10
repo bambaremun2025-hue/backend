@@ -44,30 +44,42 @@ const requireAdmin = async (req, res, next) => {
 
 app.post('/api/auth/register', async (req, res) => {
     try {
+        console.log('=== DÉBUT INSCRIPTION ===');
+        console.log('Body reçu:', req.body);
+        
         const { email, password, name } = req.body;
         
         if (!email || !password || !name) {
+            console.log('Champs manquants');
             return res.status(400).json({ error: 'Tous les champs sont requis' });
         }
 
-        const hashedPassword = await bcrypt.hash(password, 10);
-        const trialEnd = new Date();
-        trialEnd.setDate(trialEnd.getDate() + 14);
-
+        console.log('Tentative création Auth...');
+        
         const { data: authData, error: authError } = await supabase.auth.signUp({
             email: email,
-            password: password,
-            options: {
-                data: {
-                    name: name,
-                    role: 'user'
-                }
-            }
+            password: password
+        });
+
+        console.log('Réponse Auth:', { 
+            user: authData?.user?.id, 
+            error: authError?.message 
         });
 
         if (authError) {
+            console.log('Erreur Auth:', authError.message);
             return res.status(400).json({ error: authError.message });
         }
+
+        if (!authData.user) {
+            console.log('Aucun user créé');
+            return res.status(400).json({ error: 'Échec création utilisateur' });
+        }
+
+        console.log('Auth réussi, création profil...');
+
+        const trialEnd = new Date();
+        trialEnd.setDate(trialEnd.getDate() + 14);
 
         const { data: profileData, error: profileError } = await supabase
             .from('profiles')
@@ -80,21 +92,28 @@ app.post('/api/auth/register', async (req, res) => {
                     trial_ends_at: trialEnd.toISOString(),
                     role: 'user'
                 }
-            ])
-            .select();
+            ]);
+
+        console.log('Réponse Profil:', { 
+            data: profileData, 
+            error: profileError?.message 
+        });
 
         if (profileError) {
-            return res.status(400).json({ error: profileError.message });
+            console.log('Erreur Profil:', profileError.message);
+            return res.status(400).json({ error: 'Erreur profil: ' + profileError.message });
         }
 
+        console.log('=== INSCRIPTION RÉUSSIE ===');
         res.json({ 
+            success: true,
             message: 'Utilisateur créé avec essai gratuit de 14 jours',
             userId: authData.user.id
         });
 
     } catch (error) {
-        console.error('Erreur inscription:', error);
-        res.status(500).json({ error: 'Erreur serveur' });
+        console.error('=== ERREUR TOTALE ===', error);
+        res.status(500).json({ error: 'Erreur serveur: ' + error.message });
     }
 });
 
