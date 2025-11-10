@@ -261,6 +261,12 @@ app.get('/api/admin/dashboard', requireAdmin, async (req, res) => {
             .from('profiles')
             .select('*', { count: 'exact', head: true });
 
+        const today = new Date().toISOString().split('T')[0];
+        const { count: todayUsers, error: todayError } = await supabase
+            .from('profiles')
+            .select('*', { count: 'exact', head: true })
+            .gte('created_at', today);
+
         const { count: activeTrials, error: trialsError } = await supabase
             .from('profiles')
             .select('*', { count: 'exact', head: true })
@@ -272,6 +278,12 @@ app.get('/api/admin/dashboard', requireAdmin, async (req, res) => {
             .select('*', { count: 'exact', head: true })
             .eq('subscription_type', 'premium');
 
+        const { count: expiredTrials, error: expiredError } = await supabase
+            .from('profiles')
+            .select('*', { count: 'exact', head: true })
+            .eq('subscription_type', 'trial')
+            .lt('trial_ends_at', new Date().toISOString());
+
         const { data: revenueData, error: revenueError } = await supabase
             .from('payments')
             .select('amount')
@@ -281,11 +293,18 @@ app.get('/api/admin/dashboard', requireAdmin, async (req, res) => {
 
         res.json({
             total_users: totalUsers || 0,
+            today_users: todayUsers || 0,
             active_trials: activeTrials || 0,
             premium_users: premiumUsers || 0,
+            expired_trials: expiredTrials || 0,
             total_revenue: totalRevenue
         });
 
+    } catch (error) {
+        console.error('Erreur dashboard:', error);
+        res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
     } catch (error) {
         console.error('Erreur dashboard:', error);
         res.status(500).json({ error: 'Erreur serveur' });
