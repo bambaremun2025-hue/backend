@@ -305,11 +305,6 @@ app.get('/api/admin/dashboard', requireAdmin, async (req, res) => {
         res.status(500).json({ error: 'Erreur serveur' });
     }
 });
-    } catch (error) {
-        console.error('Erreur dashboard:', error);
-        res.status(500).json({ error: 'Erreur serveur' });
-    }
-});
 
 app.get('/api/products', async (req, res) => {
     try {
