@@ -1,14 +1,13 @@
 const { createClient } = require('@supabase/supabase-js');
-
-const supabaseUrl = 'https://meaczpmwhfponrjdxmmi.supabase.co';
-const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1lYWN6cG13aGZwb25yamR4bW1pIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI1NzkzMjYsImV4cCI6MjA3ODE1NTMyNn0.Gp25mFEAm5L4cKBm5BXsIqmEik81oxkqgc8nqfh9s1s';
-
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
 const express = require('express');
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 const bcrypt = require('bcryptjs');
 const cors = require('cors');
+
+const supabaseUrl = 'https://meaczpmwhfponrjdxmmi.supabase.co';
+const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1lYWN6cG13aGZwb25yamR4bW1pIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI1NzkzMjYsImV4cCI6MjA3ODE1NTMyNn0.Gp25mFEAm5L4cKBm5BXsIqmEik81oxkqgc8nqfh9s1s';
+const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -356,22 +355,22 @@ db.serialize(() => {
         );
     });
 
-   app.get('/api/health', (req, res) => {
-    res.json({
-        status: 'OK',
-        server: 'active',
-        timestamp: new Date().toISOString()
+    app.get('/api/health', (req, res) => {
+        res.json({
+            status: 'OK',
+            server: 'active',
+            timestamp: new Date().toISOString()
+        });
+    });
+
+    app.get('/', (req, res) => {
+        res.json({
+            message: 'Backend is running!',
+            status: 'OK'
+        });
+    });
+
+    app.listen(PORT, () => {
+        console.log(`Serveur démarré sur le port ${PORT}`);
     });
 });
-
-app.get('/', (req, res) => {
-    res.json({
-        message: 'Backend is running!',
-        status: 'OK'
-    });
-});
-
-app.listen(PORT, () => {
-    console.log(`Serveur démarré sur le port ${PORT}`);
-});
-
