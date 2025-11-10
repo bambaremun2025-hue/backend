@@ -440,7 +440,75 @@ const verifyNaboostartSignature = (payload, signature, secret) => {
         .digest('hex');
     return computedSignature === signature;
 };
+app.post('/api/payments/naboostart-initiate', async (req, res) => {
+    try {
+        const { userId, amount, customerEmail, customerPhone, customerName } = req.body;
+        
+        const naboopyPayload = {
+            amount: amount * 100,
+            currency: "XOF",
+            description: "Abonnement Premium Mensuel",
+            customer_email: customerEmail,
+            customer_phone_number: customerPhone,
+            customer_name: customerName,
+            return_url: "https://ton-site.com/payment/success",
+            cancel_url: "https://ton-site.com/payment/cancel",
+            metadata: {
+                user_id: userId,
+                product: "abonnement_premium_mensuel"
+            }
+        };
 
+        const naboopyResponse = await fetch('https://api.naboostart.com/v1/payments/initiate', {
+            method: 'POST',
+            headers: {
+                'Authorization': 'Bearer naboo-520d304a-a41f-4791-b152-d156716ca129.24ed6ed2-4904-4aea-a6de-41b1eabf135c',
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(naboopyPayload)
+        });
+        
+        const paymentData = await naboopyResponse.json();
+        
+        if (paymentData.success) {
+            const { data: dbData, error: dbError } = await supabase
+                .from('payments')
+                .insert([
+                    {
+                        user_id: userId,
+                        amount: amount,
+                        status: 'pending',
+                        naboostart_payment_id: paymentData.data.payment_id,
+                        naboostart_payment_url: paymentData.data.payment_url,
+                        customer_email: customerEmail,
+                        customer_phone: customerPhone
+                    }
+                ])
+                .select();
+            
+            res.json({
+                success: true,
+                payment_url: paymentData.data.payment_url,
+                payment_id: paymentData.data.payment_id,
+                message: "Paiement initié avec succès"
+            });
+        } else {
+            res.status(400).json({ 
+                success: false,
+                error: paymentData.message || "Erreur lors de l'initiation du paiement"
+            });
+        }
+        
+    } catch (error) {
+        console.error('Erreur NABOOPAY:', error);
+        res.status(500).json({ 
+            success: false,
+            error: 'Erreur de connexion au service de paiement' 
+        });
+    }
+});
+    
+});
 app.post('/api/webhooks/naboostart', express.json({ verify: (req, res, buf) => {
     req.rawBody = buf;
 }}), async (req, res) => {
