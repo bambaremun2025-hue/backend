@@ -350,6 +350,15 @@ db.serialize(() => {
         );
     });
 
+    // === ROUTE HEALTH CHECK POUR GARDER LE SERVEUR ACTIF ===
+    app.get('/api/health', (req, res) => {
+        res.json({ 
+            status: 'OK', 
+            server: 'active',
+            timestamp: new Date().toISOString()
+        });
+    });
+
     app.listen(PORT, () => {
         console.log(`Serveur démarré sur le port ${PORT}`);
     });
