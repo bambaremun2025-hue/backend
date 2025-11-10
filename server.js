@@ -431,7 +431,100 @@ app.get('/', (req, res) => {
         status: 'OK'
     });
 });
+const crypto = require('crypto');
+
+const verifyNaboostartSignature = (payload, signature, secret) => {
+    const computedSignature = crypto
+        .createHmac('sha256', secret)
+        .update(JSON.stringify(payload))
+        .digest('hex');
+    return computedSignature === signature;
+};
+
+app.post('/api/webhooks/naboostart', express.json({ verify: (req, res, buf) => {
+    req.rawBody = buf;
+}}), async (req, res) => {
+    try {
+        const signature = req.headers['x-naboostart-signature'];
+        const payload = req.body;
+        
+        const isValid = verifyNaboostartSignature(
+            payload, 
+            signature, 
+            'be75fcdd57db5bd3bea0c99527997c06161481f09033f36d7e83f1c87bc0afed'
+        );
+        
+        if (!isValid) {
+            console.error('Signature webhook invalide');
+            return res.status(401).json({ error: 'Signature invalide' });
+        }
+        
+        console.log('Webhook NABOOPAY:', {
+            payment_id: payload.payment_id,
+            status: payload.status,
+            amount: payload.amount
+        });
+        
+        if (payload.status === 'completed' || payload.status === 'success') {
+            const { error: paymentError } = await supabase
+                .from('payments')
+                .update({ 
+                    status: 'completed',
+                    completed_at: new Date().toISOString()
+                })
+                .eq('naboostart_payment_id', payload.payment_id);
+            
+            if (paymentError) {
+                console.error('Erreur paiement:', paymentError);
+            }
+            
+            const { data: payment } = await supabase
+                .from('payments')
+                .select('user_id')
+                .eq('naboostart_payment_id', payload.payment_id)
+                .single();
+            
+            if (payment && payment.user_id) {
+                const subscriptionEnd = new Date();
+                subscriptionEnd.setMonth(subscriptionEnd.getMonth() + 1);
+                
+                const { error: userError } = await supabase
+                    .from('profiles')
+                    .update({
+                        subscription_type: 'premium',
+                        subscription_end_date: subscriptionEnd.toISOString(),
+                        is_premium: true
+                    })
+                    .eq('id', payment.user_id);
+                
+                if (userError) {
+                    console.error('Erreur activation:', userError);
+                } else {
+                    console.log('Abonnement active pour user:', payment.user_id);
+                }
+            }
+        } else if (payload.status === 'failed' || payload.status === 'cancelled') {
+            await supabase
+                .from('payments')
+                .update({ status: 'failed' })
+                .eq('naboostart_payment_id', payload.payment_id);
+        }
+        
+        res.status(200).json({ 
+            received: true,
+            processed: true 
+        });
+        
+    } catch (error) {
+        console.error('Erreur webhook:', error);
+        res.status(200).json({ 
+            received: true,
+            error: error.message 
+        });
+    }
+});
 
 app.listen(PORT, () => {
-    console.log(`Serveur démarré sur le port ${PORT}`);
+    console.log(`Serveur demarre sur le port ${PORT}`);
 });
+
