@@ -204,6 +204,7 @@ app.post('/api/payments/create-monthly', async (req, res) => {
 
 app.post('/api/payments/naboostart-initiate', async (req, res) => {
     try {
+        res.setHeader('X-FullStory-Exclude', 'true');
         const { userId, amount, customerEmail, customerPhone, customerName } = req.body;
         
         const naboopyPayload = {
