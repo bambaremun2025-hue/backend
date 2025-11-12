@@ -68,7 +68,6 @@ app.post('/api/send-verification-email', async (req, res) => {
         console.log('📧 EMAIL DE VÉRIFICATION ENVOYÉ :');
         console.log('À:', to);
         console.log('Code:', verificationCode);
-        console.log('HTML:', emailHtml);
 
         res.json({ 
             success: true, 
@@ -106,7 +105,7 @@ const requireAdmin = async (req, res, next) => {
 
 app.post('/api/auth/register', async (req, res) => {
     try {
-        console.log('=== DÉBUT INSCRIPTION ===');
+        console.log('=== DÉBUT INSCRIPTION AVEC VÉRIFICATION ===');
         console.log('Body reçu:', req.body);
         
         const { email, password, name } = req.body;
@@ -114,6 +113,17 @@ app.post('/api/auth/register', async (req, res) => {
         if (!email || !password || !name) {
             console.log('Champs manquants');
             return res.status(400).json({ error: 'Tous les champs sont requis' });
+        }
+
+        // Vérifier si l'email existe déjà
+        const { data: existingUser } = await supabase
+            .from('profiles')
+            .select('email')
+            .eq('email', email)
+            .single();
+
+        if (existingUser) {
+            return res.status(400).json({ error: 'Cet email est déjà utilisé' });
         }
 
         console.log('Tentative création Auth...');
@@ -138,7 +148,11 @@ app.post('/api/auth/register', async (req, res) => {
             return res.status(400).json({ error: 'Échec création utilisateur' });
         }
 
-        console.log('Auth réussi, création profil...');
+        console.log('Auth réussi, création profil avec vérification...');
+
+        // Générer le code de vérification
+        const verificationCode = generateVerificationCode();
+        const verificationExpires = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
 
         const trialEnd = new Date();
         trialEnd.setDate(trialEnd.getDate() + 14);
@@ -152,9 +166,14 @@ app.post('/api/auth/register', async (req, res) => {
                     full_name: name,
                     subscription_type: 'trial',
                     trial_ends_at: trialEnd.toISOString(),
-                    role: 'user'
+                    role: 'user',
+                    verification_code: verificationCode,
+                    verification_expires: verificationExpires.toISOString(),
+                    email_verified: false,
+                    verification_sent_at: new Date().toISOString()
                 }
-            ]);
+            ])
+            .select();
 
         console.log('Réponse Profil:', { 
             data: profileData, 
@@ -166,16 +185,77 @@ app.post('/api/auth/register', async (req, res) => {
             return res.status(400).json({ error: 'Erreur profil: ' + profileError.message });
         }
 
-        console.log('=== INSCRIPTION RÉUSSIE ===');
+        // Envoyer l'email de vérification
+        const emailResponse = await fetch('https://backend-s05x.onrender.com/api/send-verification-email', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                to: email,
+                name: name,
+                verificationCode: verificationCode
+            })
+        });
+
+        const emailResult = await emailResponse.json();
+        console.log('Résultat envoi email:', emailResult);
+
+        console.log('=== INSCRIPTION RÉUSSIE - VÉRIFICATION REQUISE ===');
         res.json({ 
             success: true,
-            message: 'Utilisateur créé avec essai gratuit de 14 jours',
-            userId: authData.user.id
+            message: 'Compte créé ! Vérifiez votre email pour le code de vérification.',
+            userId: authData.user.id,
+            verificationRequired: true
         });
 
     } catch (error) {
         console.error('=== ERREUR TOTALE ===', error);
         res.status(500).json({ error: 'Erreur serveur: ' + error.message });
+    }
+});
+
+app.post('/api/auth/verify-email', async (req, res) => {
+    try {
+        const { email, code } = req.body;
+        
+        if (!email || !code) {
+            return res.status(400).json({ error: 'Email et code requis' });
+        }
+
+        const { data: user, error: userError } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('email', email)
+            .eq('verification_code', code)
+            .gt('verification_expires', new Date().toISOString())
+            .single();
+
+        if (userError || !user) {
+            return res.status(400).json({ error: 'Code invalide ou expiré' });
+        }
+
+        // Marquer l'email comme vérifié
+        const { error: updateError } = await supabase
+            .from('profiles')
+            .update({ 
+                email_verified: true,
+                verification_code: null,
+                verification_expires: null,
+                email_verified_at: new Date().toISOString()
+            })
+            .eq('email', email);
+
+        if (updateError) {
+            return res.status(500).json({ error: 'Erreur vérification' });
+        }
+
+        res.json({ 
+            success: true,
+            message: 'Email vérifié avec succès ! Vous pouvez maintenant vous connecter.'
+        });
+
+    } catch (error) {
+        console.error('Erreur vérification:', error);
+        res.status(500).json({ error: 'Erreur serveur' });
     }
 });
 
@@ -202,6 +282,15 @@ app.post('/api/auth/login', async (req, res) => {
             return res.status(500).json({ error: 'Erreur base de données' });
         }
 
+        // Vérifier si l'email est confirmé
+        if (!user.email_verified) {
+            return res.status(403).json({ 
+                error: 'Email non vérifié. Veuillez vérifier votre boîte email.',
+                needs_verification: true,
+                userId: user.id
+            });
+        }
+
         res.json({
             message: 'Connexion réussie',
             user: {
@@ -211,13 +300,74 @@ app.post('/api/auth/login', async (req, res) => {
                 role: user.role,
                 subscription_type: user.subscription_type,
                 trial_ends_at: user.trial_ends_at,
-                subscription_end_date: user.subscription_end_date
+                subscription_end_date: user.subscription_end_date,
+                email_verified: user.email_verified
             }
         });
 
     } catch (error) {
         console.error('Erreur connexion:', error);
         res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
+
+app.post('/api/auth/resend-verification', async (req, res) => {
+    try {
+        const { email } = req.body;
+        
+        const { data: user, error: userError } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('email', email)
+            .single();
+
+        if (userError || !user) {
+            return res.status(404).json({ error: 'Utilisateur non trouvé' });
+        }
+
+        if (user.email_verified) {
+            return res.status(400).json({ error: 'Email déjà vérifié' });
+        }
+
+        // Générer un nouveau code
+        const verificationCode = generateVerificationCode();
+        const verificationExpires = new Date(Date.now() + 15 * 60 * 1000);
+
+        // Mettre à jour le code
+        const { error: updateError } = await supabase
+            .from('profiles')
+            .update({
+                verification_code: verificationCode,
+                verification_expires: verificationExpires.toISOString(),
+                verification_sent_at: new Date().toISOString()
+            })
+            .eq('email', email);
+
+        if (updateError) {
+            return res.status(500).json({ error: 'Erreur mise à jour' });
+        }
+
+        // Renvoyer l'email
+        const emailResponse = await fetch('https://backend-s05x.onrender.com/api/send-verification-email', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                to: email,
+                name: user.full_name,
+                verificationCode: verificationCode
+            })
+        });
+
+        const emailResult = await emailResponse.json();
+
+        res.json({ 
+            success: true,
+            message: 'Nouveau code de vérification envoyé !'
+        });
+
+    } catch (error) {
+        console.error('Erreur renvoi vérification:', error);
+        res.status(500).json({ error: 'Erreur envoi email' });
     }
 });
 
@@ -476,7 +626,7 @@ app.get('/api/admin/dashboard', requireAdmin, async (req, res) => {
     try {
         const { count: totalUsers } = await supabase
             .from('profiles')
-            .select('*', { count: 'exact', head: true );
+            .select('*', { count: 'exact', head: true });
 
         const today = new Date().toISOString().split('T')[0];
         const { count: todayUsers } = await supabase
@@ -527,7 +677,7 @@ app.get('/api/stats/public', async (req, res) => {
     try {
         const { count: totalUsers } = await supabase
             .from('profiles')
-            .select('*', { count: 'exact', head: true );
+            .select('*', { count: 'exact', head: true });
 
         const today = new Date().toISOString().split('T')[0];
         const { count: todayUsers } = await supabase
