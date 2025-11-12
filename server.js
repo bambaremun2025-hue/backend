@@ -339,6 +339,77 @@ app.post('/api/admin/promote', requireAdmin, async (req, res) => {
     }
 });
 
+app.post('/api/admin/activate-subscription', async (req, res) => {
+    try {
+        const { userEmail, months = 1 } = req.body;
+        
+        const authHeader = req.headers.authorization;
+        if (!authHeader || !authHeader.includes('admin')) {
+            return res.status(403).json({ error: 'Accès admin requis' });
+        }
+
+        const subscriptionEnd = new Date();
+        subscriptionEnd.setMonth(subscriptionEnd.getMonth() + months);
+
+        const { data: user, error: userError } = await supabase
+            .from('profiles')
+            .update({
+                subscription_type: 'premium',
+                subscription_end_date: subscriptionEnd.toISOString(),
+                is_premium: true,
+                activated_by: 'admin_manual',
+                activated_at: new Date().toISOString()
+            })
+            .eq('email', userEmail)
+            .select();
+
+        if (userError) {
+            return res.status(500).json({ error: 'Erreur base de données: ' + userError.message });
+        }
+
+        if (!user || user.length === 0) {
+            return res.status(404).json({ error: 'Utilisateur non trouvé: ' + userEmail });
+        }
+
+        res.json({ 
+            success: true,
+            message: `Abonnement activé pour ${userEmail} jusqu'au ${subscriptionEnd.toLocaleDateString('fr-FR')}`,
+            user: user[0]
+        });
+
+    } catch (error) {
+        console.error('Erreur activation manuelle:', error);
+        res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
+
+app.get('/api/admin/search-users', async (req, res) => {
+    try {
+        const { email, name } = req.query;
+        
+        let query = supabase.from('profiles').select('*');
+        
+        if (email) {
+            query = query.ilike('email', `%${email}%`);
+        }
+        if (name) {
+            query = query.ilike('full_name', `%${name}%`);
+        }
+
+        const { data: users, error } = await query;
+
+        if (error) {
+            return res.status(500).json({ error: 'Erreur recherche: ' + error.message });
+        }
+
+        res.json({ users: users || [] });
+
+    } catch (error) {
+        console.error('Erreur recherche users:', error);
+        res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
+
 app.get('/api/admin/dashboard', requireAdmin, async (req, res) => {
     try {
         const { count: totalUsers } = await supabase
@@ -396,89 +467,241 @@ app.get('/api/stats/public', async (req, res) => {
             .from('profiles')
             .select('*', { count: 'exact', head: true });
 
-        const { count: activeUsers } = await supabase
+        const today = new Date().toISOString().split('T')[0];
+        const { count: todayUsers } = await supabase
             .from('profiles')
             .select('*', { count: 'exact', head: true })
-            .or('subscription_type.eq.premium,and(trial_ends_at.gt.' + new Date().toISOString() + ',subscription_type.eq.trial)');
+            .gte('created_at', today);
 
-        const { data: recentPayments } = await supabase
+        const { count: activeTrials } = await supabase
+            .from('profiles')
+            .select('*', { count: 'exact', head: true })
+            .eq('subscription_type', 'trial')
+            .gt('trial_ends_at', new Date().toISOString());
+
+        const { count: premiumUsers } = await supabase
+            .from('profiles')
+            .select('*', { count: 'exact', head: true })
+            .eq('subscription_type', 'premium');
+
+        const { count: expiredTrials } = await supabase
+            .from('profiles')
+            .select('*', { count: 'exact', head: true })
+            .eq('subscription_type', 'trial')
+            .lt('trial_ends_at', new Date().toISOString());
+
+        const { data: revenueData } = await supabase
             .from('payments')
-            .select('amount, created_at')
-            .eq('status', 'completed')
-            .order('created_at', { ascending: false })
-            .limit(10);
+            .select('amount')
+            .eq('status', 'completed');
+
+        const totalRevenue = revenueData ? revenueData.reduce((sum, payment) => sum + payment.amount, 0) : 0;
 
         res.json({
             total_users: totalUsers || 0,
-            active_users: activeUsers || 0,
-            recent_payments: recentPayments || []
+            today_users: todayUsers || 0,
+            active_trials: activeTrials || 0,
+            premium_users: premiumUsers || 0,
+            expired_trials: expiredTrials || 0,
+            total_revenue: totalRevenue
         });
 
     } catch (error) {
-        console.error('Erreur stats publiques:', error);
         res.status(500).json({ error: 'Erreur serveur' });
     }
 });
 
-app.post('/api/webhooks/naboostart', async (req, res) => {
+app.post('/api/products', async (req, res) => {
     try {
-        const webhookSecret = 'be75fcdd57db5bd3bea0c99527997c06161481f09033f36d7e83f1c87bc0afed';
-        const signature = req.headers['x-naboostart-signature'];
+        const { name, price, stock, purchase_price, category } = req.body;
         
-        if (!signature) {
-            return res.status(401).json({ error: 'Signature manquante' });
+        if (!name || !price || !stock) {
+            return res.status(400).json({ error: 'Nom, prix et stock sont requis' });
         }
 
-        const payload = JSON.stringify(req.body);
-        
-        const { payment_id, status, metadata } = req.body;
-        
-        if (status === 'completed') {
-            const { data: payment, error: paymentError } = await supabase
-                .from('payments')
-                .select('*')
-                .eq('naboostart_payment_id', payment_id)
-                .single();
+        const { data: product, error } = await supabase
+            .from('products')
+            .insert([
+                {
+                    name: name,
+                    price: parseFloat(price),
+                    stock: parseInt(stock),
+                    purchase_price: purchase_price ? parseFloat(purchase_price) : null,
+                    category: category || 'Non catégorisé'
+                }
+            ])
+            .select();
 
-            if (paymentError || !payment) {
-                return res.status(404).json({ error: 'Paiement non trouvé' });
-            }
-
-            await supabase
-                .from('payments')
-                .update({ status: 'completed' })
-                .eq('naboostart_payment_id', payment_id);
-
-            const subscriptionEnd = new Date();
-            subscriptionEnd.setMonth(subscriptionEnd.getMonth() + 1);
-
-            await supabase
-                .from('profiles')
-                .update({ 
-                    subscription_type: 'premium',
-                    subscription_end_date: subscriptionEnd.toISOString()
-                })
-                .eq('id', payment.user_id);
-
-            console.log('Abonnement activé pour user:', payment.user_id);
+        if (error) {
+            return res.status(500).json({ error: 'Erreur création produit: ' + error.message });
         }
 
-        res.json({ success: true });
+        res.json({ 
+            success: true,
+            message: 'Produit ajouté avec succès',
+            product: product[0]
+        });
 
     } catch (error) {
-        console.error('Erreur webhook:', error);
-        res.status(500).json({ error: 'Erreur webhook' });
+        console.error('Erreur ajout produit:', error);
+        res.status(500).json({ error: 'Erreur serveur' });
     }
 });
 
+app.get('/api/products', async (req, res) => {
+    try {
+        const { data: products, error } = await supabase
+            .from('products')
+            .select('*');
+
+        if (error) {
+            return res.status(500).json({ error: 'Erreur base de données' });
+        }
+
+        res.json(products);
+
+    } catch (error) {
+        console.error('Erreur produits:', error);
+        res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
+
+app.post('/api/sales', async (req, res) => {
+    try {
+        const { product_id, quantity, total_amount, user_id } = req.body;
+        
+        const { data: saleData, error } = await supabase
+            .from('sales')
+            .insert([
+                {
+                    product_id: product_id,
+                    quantity: quantity,
+                    total_amount: total_amount,
+                    user_id: user_id
+                }
+            ])
+            .select();
+
+        if (error) {
+            return res.status(500).json({ error: 'Erreur lors de l\'enregistrement' });
+        }
+
+        res.json({ message: 'Vente enregistrée', saleId: saleData[0].id });
+
+    } catch (error) {
+        console.error('Erreur vente:', error);
+        res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
+
+const crypto = require('crypto');
+
+const verifyNaboostartSignature = (payload, signature, secret) => {
+    const computedSignature = crypto
+        .createHmac('sha256', secret)
+        .update(JSON.stringify(payload))
+        .digest('hex');
+    return computedSignature === signature;
+};
+
+app.post('/api/webhooks/naboostart', express.json({ verify: (req, res, buf) => {
+    req.rawBody = buf;
+}}), async (req, res) => {
+    try {
+        const signature = req.headers['x-naboostart-signature'];
+        const payload = req.body;
+        
+        const isValid = verifyNaboostartSignature(
+            payload, 
+            signature, 
+            'be75fcdd57db5bd3bea0c99527997c06161481f09033f36d7e83f1c87bc0afed'
+        );
+        
+        if (!isValid) {
+            console.error('Signature webhook invalide');
+            return res.status(401).json({ error: 'Signature invalide' });
+        }
+        
+        console.log('Webhook NABOOPAY:', {
+            payment_id: payload.payment_id,
+            status: payload.status,
+            amount: payload.amount
+        });
+        
+        if (payload.status === 'completed' || payload.status === 'success') {
+            const { error: paymentError } = await supabase
+                .from('payments')
+                .update({ 
+                    status: 'completed',
+                    completed_at: new Date().toISOString()
+                })
+                .eq('naboostart_payment_id', payload.payment_id);
+            
+            if (paymentError) {
+                console.error('Erreur paiement:', paymentError);
+            }
+            
+            const { data: payment } = await supabase
+                .from('payments')
+                .select('user_id')
+                .eq('naboostart_payment_id', payload.payment_id)
+                .single();
+            
+            if (payment && payment.user_id) {
+                const subscriptionEnd = new Date();
+                subscriptionEnd.setMonth(subscriptionEnd.getMonth() + 1);
+                
+                const { error: userError } = await supabase
+                    .from('profiles')
+                    .update({
+                        subscription_type: 'premium',
+                        subscription_end_date: subscriptionEnd.toISOString(),
+                        is_premium: true
+                    })
+                    .eq('id', payment.user_id);
+                
+                if (userError) {
+                    console.error('Erreur activation:', userError);
+                } else {
+                    console.log('Abonnement active pour user:', payment.user_id);
+                }
+            }
+        } else if (payload.status === 'failed' || payload.status === 'cancelled') {
+            await supabase
+                .from('payments')
+                .update({ status: 'failed' })
+                .eq('naboostart_payment_id', payload.payment_id);
+        }
+        
+        res.status(200).json({ 
+            received: true,
+            processed: true 
+        });
+        
+    } catch (error) {
+        console.error('Erreur webhook:', error);
+        res.status(200).json({ 
+            received: true,
+            error: error.message 
+        });
+    }
+});
+
+app.get('/api/health', (req, res) => {
+    res.json({
+        status: 'OK',
+        server: 'active',
+        timestamp: new Date().toISOString()
+    });
+});
+
 app.get('/', (req, res) => {
-    res.json({ 
-        message: 'Backend fonctionnel',
-        version: '1.0.0',
-        status: 'online'
+    res.json({
+        message: 'Backend is running!',
+        status: 'OK'
     });
 });
 
 app.listen(PORT, () => {
-    console.log(`Serveur démarré sur le port ${PORT}`);
+    console.log(`Serveur demarre sur le port ${PORT}`);
 });
