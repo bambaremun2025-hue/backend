@@ -1,7 +1,5 @@
 const { createClient } = require('@supabase/supabase-js');
 const express = require('express');
-const path = require('path');
-const bcrypt = require('bcryptjs');
 const cors = require('cors');
 
 const supabaseUrl = 'https://meaczpmwhfponrjdxmmi.supabase.co';
@@ -42,19 +40,98 @@ const requireAdmin = async (req, res, next) => {
     next();
 };
 
+app.get('/api/user/subscription-status/:userId', async (req, res) => {
+    try {
+        const { userId } = req.params;
+        
+        const { data: user, error } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', userId)
+            .single();
+
+        if (error || !user) {
+            return res.status(404).json({ error: 'Utilisateur non trouvé' });
+        }
+
+        const now = new Date();
+        const endDate = new Date(user.subscription_type === 'premium' ? user.subscription_end_date : user.trial_ends_at);
+        const daysLeft = Math.ceil((endDate - now) / (1000 * 60 * 60 * 24));
+
+        let notifications = [];
+
+        if (user.subscription_type === 'trial') {
+            if (daysLeft === 7) {
+                notifications.push({
+                    type: 'warning',
+                    message: 'Votre essai gratuit expire dans 7 jours',
+                    days_left: 7,
+                    action_required: true,
+                    action_text: 'S\'abonner maintenant',
+                    action_url: '/pricing'
+                });
+            } else if (daysLeft === 3) {
+                notifications.push({
+                    type: 'warning',
+                    message: 'Votre essai gratuit expire dans 3 jours !',
+                    days_left: 3,
+                    action_required: true,
+                    action_text: 'S\'abonner maintenant',
+                    action_url: '/pricing'
+                });
+            } else if (daysLeft === 1) {
+                notifications.push({
+                    type: 'error',
+                    message: 'DERNIER JOUR ! Votre essai gratuit expire demain',
+                    days_left: 1,
+                    action_required: true,
+                    action_text: 'S\'abonner maintenant',
+                    action_url: '/pricing'
+                });
+            } else if (daysLeft <= 0) {
+                notifications.push({
+                    type: 'error',
+                    message: 'Votre essai gratuit a expiré',
+                    days_left: 0,
+                    action_required: true,
+                    action_text: 'S\'abonner maintenant',
+                    action_url: '/pricing'
+                });
+            }
+        }
+
+        if (user.subscription_type === 'premium' && daysLeft <= 7) {
+            notifications.push({
+                type: 'warning',
+                message: `Votre abonnement premium expire dans ${daysLeft} jours`,
+                days_left: daysLeft,
+                action_required: true,
+                action_text: 'Renouveler',
+                action_url: '/pricing'
+            });
+        }
+
+        res.json({
+            subscription_type: user.subscription_type,
+            subscription_end: user.subscription_type === 'premium' ? user.subscription_end_date : user.trial_ends_at,
+            days_left: daysLeft,
+            notifications: notifications
+        });
+
+    } catch (error) {
+        console.error('Erreur statut abonnement:', error);
+        res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
+
 app.post('/api/auth/register', async (req, res) => {
     try {
-        console.log('=== DÉBUT INSCRIPTION SIMPLIFIÉE ===');
-        console.log('Body reçu:', req.body);
-        
         const { email, password, name } = req.body;
         
         if (!email || !password || !name) {
-            console.log('Champs manquants');
             return res.status(400).json({ error: 'Tous les champs sont requis' });
         }
 
-        // Vérifier si l'email existe déjà
         const { data: existingUser } = await supabase
             .from('profiles')
             .select('email')
@@ -65,29 +142,18 @@ app.post('/api/auth/register', async (req, res) => {
             return res.status(400).json({ error: 'Cet email est déjà utilisé' });
         }
 
-        console.log('Tentative création Auth...');
-        
         const { data: authData, error: authError } = await supabase.auth.signUp({
             email: email,
             password: password
         });
 
-        console.log('Réponse Auth:', { 
-            user: authData?.user?.id, 
-            error: authError?.message 
-        });
-
         if (authError) {
-            console.log('Erreur Auth:', authError.message);
             return res.status(400).json({ error: authError.message });
         }
 
         if (!authData.user) {
-            console.log('Aucun user créé');
             return res.status(400).json({ error: 'Échec création utilisateur' });
         }
-
-        console.log('Auth réussi, création profil...');
 
         const trialEnd = new Date();
         trialEnd.setDate(trialEnd.getDate() + 14);
@@ -102,22 +168,15 @@ app.post('/api/auth/register', async (req, res) => {
                     subscription_type: 'trial',
                     trial_ends_at: trialEnd.toISOString(),
                     role: 'user',
-                    email_verified: true  // ← Directement vérifié
+                    email_verified: true
                 }
             ])
             .select();
 
-        console.log('Réponse Profil:', { 
-            data: profileData, 
-            error: profileError?.message 
-        });
-
         if (profileError) {
-            console.log('Erreur Profil:', profileError.message);
             return res.status(400).json({ error: 'Erreur profil: ' + profileError.message });
         }
 
-        console.log('=== INSCRIPTION RÉUSSIE ===');
         res.json({ 
             success: true,
             message: 'Utilisateur créé avec essai gratuit de 14 jours',
@@ -125,8 +184,8 @@ app.post('/api/auth/register', async (req, res) => {
         });
 
     } catch (error) {
-        console.error('=== ERREUR TOTALE ===', error);
-        res.status(500).json({ error: 'Erreur serveur: ' + error.message });
+        console.error('Erreur inscription:', error);
+        res.status(500).json({ error: 'Erreur serveur' });
     }
 });
 
@@ -168,50 +227,6 @@ app.post('/api/auth/login', async (req, res) => {
 
     } catch (error) {
         console.error('Erreur connexion:', error);
-        res.status(500).json({ error: 'Erreur serveur' });
-    }
-});
-
-// ... [TOUTES LES AUTRES ROUTES RESTENT IDENTIQUES]
-app.post('/api/payments/create-monthly', async (req, res) => {
-    try {
-        const { userId, customerEmail, customerName } = req.body;
-        
-        if (!userId || !customerEmail) {
-            return res.status(400).json({ error: 'Données manquantes' });
-        }
-
-        const amount = 15000;
-        const invoiceId = 'INV_' + Date.now();
-        const paymentUrl = 'https://paydunya.com/sandbox/checkout/' + invoiceId;
-        
-        const { data: paymentData, error: paymentError } = await supabase
-            .from('payments')
-            .insert([
-                {
-                    user_id: userId,
-                    amount: amount,
-                    status: 'pending',
-                    paydunya_invoice_id: invoiceId,
-                    paydunya_payment_url: paymentUrl
-                }
-            ])
-            .select();
-
-        if (paymentError) {
-            return res.status(500).json({ error: 'Erreur base de données' });
-        }
-        
-        res.json({
-            success: true,
-            message: 'Paiement créé avec succès',
-            payment_url: paymentUrl,
-            invoice_id: invoiceId,
-            amount: amount
-        });
-
-    } catch (error) {
-        console.error('Erreur paiement:', error);
         res.status(500).json({ error: 'Erreur serveur' });
     }
 });
@@ -282,74 +297,6 @@ app.post('/api/payments/naboostart-initiate', async (req, res) => {
             success: false,
             error: 'Erreur de connexion au service de paiement' 
         });
-    }
-});
-
-app.post('/api/payments/confirm', async (req, res) => {
-    try {
-        const { invoice_id, user_id } = req.body;
-        
-        const { data: payment, error: paymentError } = await supabase
-            .from('payments')
-            .select('*')
-            .eq('paydunya_invoice_id', invoice_id)
-            .eq('user_id', user_id)
-            .single();
-
-        if (paymentError || !payment) {
-            return res.status(404).json({ error: 'Paiement non trouvé' });
-        }
-
-        await supabase
-            .from('payments')
-            .update({ status: 'completed' })
-            .eq('paydunya_invoice_id', invoice_id);
-
-        const subscriptionEnd = new Date();
-        subscriptionEnd.setMonth(subscriptionEnd.getMonth() + 1);
-
-        const { error: userError } = await supabase
-            .from('profiles')
-            .update({ 
-                subscription_type: 'premium',
-                subscription_end_date: subscriptionEnd.toISOString()
-            })
-            .eq('id', user_id);
-
-        if (userError) {
-            return res.status(500).json({ error: 'Erreur activation abonnement' });
-        }
-
-        res.json({ 
-            success: true,
-            message: 'Abonnement premium mensuel activé avec succès',
-            subscription_end: subscriptionEnd.toISOString()
-        });
-
-    } catch (error) {
-        console.error('Erreur confirmation:', error);
-        res.status(500).json({ error: 'Erreur serveur' });
-    }
-});
-
-app.post('/api/admin/promote', requireAdmin, async (req, res) => {
-    try {
-        const { email } = req.body;
-        
-        const { data, error } = await supabase
-            .from('profiles')
-            .update({ role: 'admin' })
-            .eq('email', email);
-
-        if (error) {
-            return res.status(500).json({ error: 'Erreur base de données' });
-        }
-
-        res.json({ message: 'Utilisateur promu admin' });
-
-    } catch (error) {
-        console.error('Erreur promotion:', error);
-        res.status(500).json({ error: 'Erreur serveur' });
     }
 });
 
@@ -605,99 +552,6 @@ app.post('/api/sales', async (req, res) => {
     } catch (error) {
         console.error('Erreur vente:', error);
         res.status(500).json({ error: 'Erreur serveur' });
-    }
-});
-
-const crypto = require('crypto');
-
-const verifyNaboostartSignature = (payload, signature, secret) => {
-    const computedSignature = crypto
-        .createHmac('sha256', secret)
-        .update(JSON.stringify(payload))
-        .digest('hex');
-    return computedSignature === signature;
-};
-
-app.post('/api/webhooks/naboostart', express.json({ verify: (req, res, buf) => {
-    req.rawBody = buf;
-}}), async (req, res) => {
-    try {
-        const signature = req.headers['x-naboostart-signature'];
-        const payload = req.body;
-        
-        const isValid = verifyNaboostartSignature(
-            payload, 
-            signature, 
-            'be75fcdd57db5bd3bea0c99527997c06161481f09033f36d7e83f1c87bc0afed'
-        );
-        
-        if (!isValid) {
-            console.error('Signature webhook invalide');
-            return res.status(401).json({ error: 'Signature invalide' });
-        }
-        
-        console.log('Webhook NABOOPAY:', {
-            payment_id: payload.payment_id,
-            status: payload.status,
-            amount: payload.amount
-        });
-        
-        if (payload.status === 'completed' || payload.status === 'success') {
-            const { error: paymentError } = await supabase
-                .from('payments')
-                .update({ 
-                    status: 'completed',
-                    completed_at: new Date().toISOString()
-                })
-                .eq('naboostart_payment_id', payload.payment_id);
-            
-            if (paymentError) {
-                console.error('Erreur paiement:', paymentError);
-            }
-            
-            const { data: payment } = await supabase
-                .from('payments')
-                .select('user_id')
-                .eq('naboostart_payment_id', payload.payment_id)
-                .single();
-            
-            if (payment && payment.user_id) {
-                const subscriptionEnd = new Date();
-                subscriptionEnd.setMonth(subscriptionEnd.getMonth() + 1);
-                
-                const { error: userError } = await supabase
-                    .from('profiles')
-                    .update({
-                        subscription_type: 'premium',
-                        subscription_end_date: subscriptionEnd.toISOString(),
-                        is_premium: true
-                    })
-                    .eq('id', payment.user_id);
-                
-                if (userError) {
-                    console.error('Erreur activation:', userError);
-                } else {
-                    console.log('Abonnement active pour user:', payment.user_id);
-                }
-            }
-        } else if (payload.status === 'failed' || payload.status === 'cancelled') {
-            await supabase
-                .from('payments')
-                .update({ status: 'failed' })
-                .eq('naboostart_payment_id', payload.payment_id);
-        }
-        
-        res.status(200).json({ 
-            received: true,
-            processed: true 
-        });
-        
-    } catch (error) {
-        console.error('Erreur webhook:', error);
-        res.status(200).json({ 
-            received: true,
-            error: error.message 
-        });
     }
 });
 
