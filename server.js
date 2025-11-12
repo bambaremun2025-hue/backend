@@ -124,6 +124,224 @@ app.get('/api/user/subscription-status/:userId', async (req, res) => {
     }
 });
 
+app.post('/api/invoices/generate', async (req, res) => {
+    try {
+        const { user_id, amount, description, payment_method } = req.body;
+        
+        const { data: lastInvoice } = await supabase
+            .from('invoices')
+            .select('invoice_number')
+            .order('created_at', { ascending: false })
+            .limit(1);
+        
+        let invoiceNumber = 'FACT-2024-001';
+        if (lastInvoice && lastInvoice.length > 0) {
+            const lastNumber = parseInt(lastInvoice[0].invoice_number.split('-')[2]);
+            invoiceNumber = `FACT-2024-${String(lastNumber + 1).padStart(3, '0')}`;
+        }
+
+        const { data: invoice, error } = await supabase
+            .from('invoices')
+            .insert([
+                {
+                    user_id: user_id,
+                    invoice_number: invoiceNumber,
+                    amount: amount,
+                    description: description,
+                    payment_method: payment_method,
+                    status: 'paid'
+                }
+            ])
+            .select();
+
+        if (error) {
+            return res.status(500).json({ error: 'Erreur création facture: ' + error.message });
+        }
+
+        res.json({ 
+            success: true,
+            message: 'Facture générée avec succès',
+            invoice: invoice[0]
+        });
+
+    } catch (error) {
+        console.error('Erreur génération facture:', error);
+        res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
+
+app.get('/api/invoices/user/:userId', async (req, res) => {
+    try {
+        const { userId } = req.params;
+        
+        const { data: invoices, error } = await supabase
+            .from('invoices')
+            .select('*')
+            .eq('user_id', userId)
+            .order('created_at', { ascending: false });
+
+        if (error) {
+            return res.status(500).json({ error: 'Erreur récupération factures' });
+        }
+
+        res.json({ invoices: invoices || [] });
+
+    } catch (error) {
+        console.error('Erreur factures:', error);
+        res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
+
+app.post('/api/invoices/generate-pdf', async (req, res) => {
+    try {
+        const { invoice_data } = req.body;
+        
+        const htmlContent = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <style>
+                body { 
+                    font-family: 'Inter', sans-serif; 
+                    margin: 0; 
+                    padding: 40px;
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                }
+                .invoice-container {
+                    max-width: 800px;
+                    margin: 0 auto;
+                    background: white;
+                    border-radius: 16px;
+                    box-shadow: 0 20px 60px rgba(0,0,0,0.1);
+                    overflow: hidden;
+                }
+                .invoice-header {
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    color: white;
+                    padding: 40px;
+                    text-align: center;
+                }
+                .invoice-body {
+                    padding: 40px;
+                }
+                .company-info, .client-info {
+                    margin-bottom: 30px;
+                }
+                .items-table {
+                    width: 100%;
+                    border-collapse: collapse;
+                    margin: 30px 0;
+                }
+                .items-table th {
+                    background: #f8fafc;
+                    padding: 15px;
+                    text-align: left;
+                    border-bottom: 2px solid #e2e8f0;
+                }
+                .items-table td {
+                    padding: 15px;
+                    border-bottom: 1px solid #e2e8f0;
+                }
+                .total-section {
+                    background: #f8fafc;
+                    padding: 20px;
+                    border-radius: 8px;
+                    margin-top: 30px;
+                }
+                .status-badge {
+                    background: #48bb78;
+                    color: white;
+                    padding: 8px 16px;
+                    border-radius: 20px;
+                    font-size: 14px;
+                    font-weight: 600;
+                }
+            </style>
+        </head>
+        <body>
+            <div class="invoice-container">
+                <div class="invoice-header">
+                    <h1>🚀 VOTRE ENTREPRISE</h1>
+                    <h2>Facture ${invoice_data.number}</h2>
+                </div>
+                <div class="invoice-body">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 40px;">
+                        <div class="company-info">
+                            <h3>Entreprise</h3>
+                            <p><strong>${invoice_data.company.name}</strong></p>
+                            <p>${invoice_data.company.email}</p>
+                            <p>${invoice_data.company.phone}</p>
+                            <p>${invoice_data.company.address}</p>
+                        </div>
+                        <div class="client-info">
+                            <h3>Client</h3>
+                            <p><strong>${invoice_data.client.name}</strong></p>
+                            <p>${invoice_data.client.email}</p>
+                            <p>Date: ${invoice_data.date}</p>
+                            <div class="status-badge">${invoice_data.status}</div>
+                        </div>
+                    </div>
+                    
+                    <table class="items-table">
+                        <thead>
+                            <tr>
+                                <th>Description</th>
+                                <th>Quantité</th>
+                                <th>Prix Unitaire</th>
+                                <th>Total</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${invoice_data.items.map(item => `
+                                <tr>
+                                    <td>
+                                        <strong>${item.name}</strong><br>
+                                        <small>${item.description}</small>
+                                    </td>
+                                    <td>${item.quantity}</td>
+                                    <td>${item.price.toLocaleString()} FCFA</td>
+                                    <td>${item.total.toLocaleString()} FCFA</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                    
+                    <div class="total-section">
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                            <div>
+                                <p><strong>Méthode de paiement:</strong></p>
+                                <p>${invoice_data.payment_method}</p>
+                            </div>
+                            <div>
+                                <p><strong>Sous-total:</strong> ${invoice_data.subtotal.toLocaleString()} FCFA</p>
+                                <p><strong>TVA (0%):</strong> ${invoice_data.tax.toLocaleString()} FCFA</p>
+                                <p><strong>Total TTC:</strong> ${invoice_data.total.toLocaleString()} FCFA</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div style="text-align: center; margin-top: 40px; color: #718096;">
+                        <p>Merci pour votre confiance ! 🎉</p>
+                        <p>Facture générée automatiquement</p>
+                    </div>
+                </div>
+            </div>
+        </body>
+        </html>
+        `;
+
+        res.json({ 
+            success: true,
+            html: htmlContent,
+            message: 'Facture premium générée'
+        });
+
+    } catch (error) {
+        console.error('Erreur génération facture:', error);
+        res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
+
 app.post('/api/auth/register', async (req, res) => {
     try {
         const { email, password, name } = req.body;
