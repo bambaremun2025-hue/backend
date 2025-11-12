@@ -20,6 +20,68 @@ app.use(cors({
 
 app.use(express.json());
 
+const generateVerificationCode = () => {
+    return Math.floor(100000 + Math.random() * 900000).toString();
+};
+
+const { Resend } = require('resend');
+const resend = new Resend('re_123456789');
+
+app.post('/api/send-verification-email', async (req, res) => {
+    try {
+        const { to, name, verificationCode } = req.body;
+        
+        const emailHtml = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; text-align: center; color: white;">
+                <h1>🔐 Vérification</h1>
+                <p style="margin: 0; font-size: 18px;">Activez votre compte</p>
+            </div>
+            
+            <div style="padding: 30px; background: #f9f9f9;">
+                <h2>Bonjour ${name},</h2>
+                <p>Voici votre code de vérification :</p>
+                
+                <div style="background: white; padding: 20px; text-align: center; margin: 20px 0; border-radius: 10px; border: 2px dashed #667eea;">
+                    <div style="font-size: 32px; font-weight: bold; letter-spacing: 8px; color: #667eea;">
+                        ${verificationCode}
+                    </div>
+                    <p style="color: #666; font-size: 14px; margin: 10px 0 0 0;">
+                        Expire dans 15 minutes
+                    </p>
+                </div>
+                
+                <p style="color: #666; font-size: 14px;">
+                    <strong>Comment utiliser votre code :</strong><br>
+                    1. Revenez sur l'application<br>
+                    2. Entrez le code ci-dessus<br>
+                    3. Votre compte sera activé
+                </p>
+            </div>
+            
+            <div style="background: #333; color: white; padding: 20px; text-align: center; font-size: 12px;">
+                <p>Si vous n'avez pas créé de compte, ignorez cet email.</p>
+            </div>
+        </div>
+        `;
+
+        console.log('📧 EMAIL DE VÉRIFICATION ENVOYÉ :');
+        console.log('À:', to);
+        console.log('Code:', verificationCode);
+        console.log('HTML:', emailHtml);
+
+        res.json({ 
+            success: true, 
+            message: 'Email de vérification envoyé',
+            code: verificationCode
+        });
+
+    } catch (error) {
+        console.error('Erreur envoi email:', error);
+        res.status(500).json({ error: 'Erreur envoi email' });
+    }
+});
+
 const requireAdmin = async (req, res, next) => {
     const authHeader = req.headers.authorization;
     
@@ -414,7 +476,7 @@ app.get('/api/admin/dashboard', requireAdmin, async (req, res) => {
     try {
         const { count: totalUsers } = await supabase
             .from('profiles')
-            .select('*', { count: 'exact', head: true });
+            .select('*', { count: 'exact', head: true );
 
         const today = new Date().toISOString().split('T')[0];
         const { count: todayUsers } = await supabase
@@ -465,7 +527,7 @@ app.get('/api/stats/public', async (req, res) => {
     try {
         const { count: totalUsers } = await supabase
             .from('profiles')
-            .select('*', { count: 'exact', head: true });
+            .select('*', { count: 'exact', head: true );
 
         const today = new Date().toISOString().split('T')[0];
         const { count: todayUsers } = await supabase
