@@ -29,9 +29,6 @@ app.use(cors({
     allowedHeaders: ['Content-Type', 'Authorization', 'Origin', 'Accept', 'X-Requested-With']
 }));
 
-// SUPPRIME cette ligne problématique :
-// app.options('*', cors());
-
 const requireAdmin = async (req, res, next) => {
     const authHeader = req.headers.authorization;
     
@@ -62,6 +59,11 @@ app.post('/api/auth/register', async (req, res) => {
             return res.status(400).json({ error: 'Tous les champs sont requis' });
         }
 
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(email)) {
+            return res.status(400).json({ error: 'Format email invalide' });
+        }
+
         const { data: existingUser } = await supabase
             .from('profiles')
             .select('email')
@@ -77,24 +79,11 @@ app.post('/api/auth/register', async (req, res) => {
         const trialEnd = new Date();
         trialEnd.setDate(trialEnd.getDate() + 14);
 
-        const { data: authData, error: authError } = await supabase.auth.signUp({
-            email: email,
-            password: password
-        });
-
-        if (authError) {
-            return res.status(400).json({ error: authError.message });
-        }
-
-        if (!authData.user) {
-            return res.status(400).json({ error: 'Échec création utilisateur' });
-        }
-
+    
         const { data: profileData, error: profileError } = await supabase
             .from('profiles')
             .insert([
                 {
-                    id: authData.user.id,
                     email: email,
                     full_name: name,
                     subscription_type: 'trial',
@@ -107,12 +96,13 @@ app.post('/api/auth/register', async (req, res) => {
             .select();
 
         if (profileError) {
-            return res.status(400).json({ error: 'Erreur profil: ' + profileError.message });
+            console.error('Erreur Supabase:', profileError);
+            return res.status(400).json({ error: 'Erreur base de données: ' + profileError.message });
         }
 
         const token = jwt.sign(
             { 
-                userId: authData.user.id,
+                userId: profileData[0].id,
                 email: email,
                 name: name
             },
@@ -125,7 +115,7 @@ app.post('/api/auth/register', async (req, res) => {
             message: 'Utilisateur créé avec essai gratuit de 14 jours',
             token: token,
             user: {
-                id: authData.user.id,
+                id: profileData[0].id,
                 email: email,
                 name: name,
                 role: 'user',
@@ -139,7 +129,6 @@ app.post('/api/auth/register', async (req, res) => {
         res.status(500).json({ error: 'Erreur serveur' });
     }
 });
-
 app.post('/api/auth/login', async (req, res) => {
     try {
         const { email, password } = req.body;
