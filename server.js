@@ -102,7 +102,6 @@ app.post('/api/auth/register', async (req, res) => {
             return res.status(400).json({ error: 'Erreur base de données: ' + userError.message });
         }
 
-       {"error":"Accès réservé à l'administrateur"}{"error":"Accès réservé à l'administrateur"}{"error":"Accès réservé à l'administrateur"}{"error":"Accès réservé à l'administrateur"}%             sowsowhotmail.it@Host-001 backend % 
 
         res.json({ 
             success: true,
