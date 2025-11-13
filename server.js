@@ -865,6 +865,75 @@ app.get('/api/admin/sales', requireAdmin, async (req, res) => {
         res.status(500).json({ error: error.message });
     }
 });
+app.post('/api/admin/activate-subscription', requireAdmin, async (req, res) => {
+    try {
+        const { userEmail, months = 1 } = req.body;
+        
+        const subscriptionEnd = new Date();
+        subscriptionEnd.setMonth(subscriptionEnd.getMonth() + months);
+
+        const { data: user, error } = await supabase
+            .from('users')
+            .update({
+                subscription_type: 'premium',
+                subscription_end_date: subscriptionEnd.toISOString(),
+                is_premium: true,
+                activated_by: 'admin',
+                activated_at: new Date().toISOString()
+            })
+            .eq('email', userEmail)
+            .select();
+
+        if (error) throw error;
+        
+        if (!user || user.length === 0) {
+            return res.status(404).json({ error: 'Utilisateur non trouvé' });
+        }
+
+        res.json({ 
+            success: true,
+            message: `Abonnement activé pour ${userEmail}`,
+            user: user[0]
+        });
+
+    } catch (error) {
+        console.error('Erreur activation:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+app.post('/api/admin/cancel-subscription', requireAdmin, async (req, res) => {
+    try {
+        const { userEmail } = req.body;
+        
+        const { data: user, error } = await supabase
+            .from('users')
+            .update({
+                subscription_type: 'trial',
+                subscription_end_date: null,
+                is_premium: false,
+                activated_by: null,
+                activated_at: null
+            })
+            .eq('email', userEmail)
+            .select();
+
+        if (error) throw error;
+        
+        if (!user || user.length === 0) {
+            return res.status(404).json({ error: 'Utilisateur non trouvé' });
+        }
+
+        res.json({ 
+            success: true,
+            message: `Abonnement annulé pour ${userEmail}`,
+            user: user[0]
+        });
+
+    } catch (error) {
+        console.error('Erreur annulation:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
 app.get('/api/health', (req, res) => {
     res.json({
         status: 'OK',
