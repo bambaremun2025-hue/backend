@@ -38,17 +38,18 @@ const requireAdmin = async (req, res, next) => {
     
     const token = authHeader.split(' ')[1];
     
-    const { data: user, error } = await supabase
-        .from('users')
-        .select('*')
-        .eq('email', token)
-        .eq('role', 'admin')
-        .single();
-
-    if (error || !user) {
-        return res.status(403).json({ error: 'Accès réservé à l\'administrateur' });
+    try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET || 'default-secret');
+    
+        if (decoded.role !== 'admin') {
+            return res.status(403).json({ error: 'Accès réservé à l\'administrateur' });
+        }
+        
+        req.user = decoded;
+        next();
+    } catch (error) {
+        return res.status(403).json({ error: 'Token invalide' });
     }
-    next();
 };
 
 app.post('/api/auth/register', async (req, res) => {
