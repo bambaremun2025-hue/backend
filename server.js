@@ -118,7 +118,16 @@ app.post('/api/auth/register', async (req, res) => {
             return res.status(400).json({ error: 'Erreur base de données: ' + userError.message });
         }
 
-
+        const token = jwt.sign(
+    { 
+        userId: userData[0].id,
+        email: email,
+        name: userName,
+        role: 'user'
+    },
+    process.env.JWT_SECRET || 'default-secret',
+    { expiresIn: '24h' }
+);
         res.json({ 
             success: true,
             message: 'Utilisateur créé avec essai gratuit de 14 jours',
