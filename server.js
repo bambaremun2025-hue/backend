@@ -18,22 +18,28 @@ app.use(express.json());
 
 app.use(cors({
     origin: [
-        'https://samaboutiksn.netlify.app',  
-        'https://builder.io',                
-        'http://localhost:3000',             
-        'https://4a5f0464c8f24a09bd2bc580e8c9401a-main.projects.builder.my',  
-        'https://4a5f0464c8f24a09bd2bc580e8c9401a-9ae7243f6c3f4aa0bdc46c3f9.fly.dev'  
+        'https://samaboutiksn.netlify.app',
+        'https://builder.io',
+        'http://localhost:3000',
+        'https://4a5f0464c8f24a09bd2bc580e8c9401a-main.projects.builder.my',
+        'https://4a5f0464c8f24a09bd2bc580e8c9401a-9ae7243f6c3f4aa0bdc46c3f9.fly.dev'
     ],
-    credentials: true,                       
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],  
-    allowedHeaders: ['Content-Type', 'Authorization', 'Origin', 'Accept', 'X-Requested-With']  
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Origin', 'Accept', 'X-Requested-With']
 }));
+
 app.post('/api/auth/register', async (req, res) => {
     try {
         const { email, password, name } = req.body;
         
         if (!email || !password || !name) {
             return res.status(400).json({ error: 'Tous les champs sont requis' });
+        }
+
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(email)) {
+            return res.status(400).json({ error: 'Format email invalide' });
         }
 
         const { data: existingUser } = await supabase
@@ -51,24 +57,10 @@ app.post('/api/auth/register', async (req, res) => {
         const trialEnd = new Date();
         trialEnd.setDate(trialEnd.getDate() + 14);
 
-        const { data: authData, error: authError } = await supabase.auth.signUp({
-            email: email,
-            password: password
-        });
-
-        if (authError) {
-            return res.status(400).json({ error: authError.message });
-        }
-
-        if (!authData.user) {
-            return res.status(400).json({ error: 'Échec création utilisateur' });
-        }
-
         const { data: profileData, error: profileError } = await supabase
             .from('profiles')
             .insert([
                 {
-                    id: authData.user.id,
                     email: email,
                     full_name: name,
                     subscription_type: 'trial',
@@ -81,12 +73,13 @@ app.post('/api/auth/register', async (req, res) => {
             .select();
 
         if (profileError) {
-            return res.status(400).json({ error: 'Erreur profil: ' + profileError.message });
+            console.error('Erreur Supabase:', profileError);
+            return res.status(400).json({ error: 'Erreur base de données: ' + profileError.message });
         }
 
         const token = jwt.sign(
             { 
-                userId: authData.user.id,
+                userId: profileData[0].id,
                 email: email,
                 name: name
             },
@@ -99,7 +92,7 @@ app.post('/api/auth/register', async (req, res) => {
             message: 'Utilisateur créé avec essai gratuit de 14 jours',
             token: token,
             user: {
-                id: authData.user.id,
+                id: profileData[0].id,
                 email: email,
                 name: name,
                 role: 'user',
