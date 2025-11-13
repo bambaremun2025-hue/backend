@@ -40,20 +40,30 @@ const requireAdmin = async (req, res, next) => {
     
     try {
         const decoded = jwt.verify(token, process.env.JWT_SECRET || 'default-secret');
-        
+
         const { data: user, error } = await supabase
             .from('users')
             .select('role')
             .eq('id', decoded.userId)
             .single();
 
-        if (error || !user || user.role !== 'admin') {
+        if (error) {
+            console.error('Erreur Supabase:', error);
+            return res.status(403).json({ error: 'Erreur de vérification admin' });
+        }
+
+        if (!user) {
+            return res.status(403).json({ error: 'Utilisateur non trouvé' });
+        }
+
+        if (user.role !== 'admin') {
             return res.status(403).json({ error: 'Accès réservé à l\'administrateur' });
         }
         
         req.user = decoded;
         next();
     } catch (error) {
+        console.error('Erreur token:', error);
         return res.status(403).json({ error: 'Token invalide' });
     }
 };
