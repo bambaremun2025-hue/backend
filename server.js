@@ -14,20 +14,16 @@ app.use(express.json());
 app.use(cors({
     origin: [
         'https://samaboutiksn.netlify.app',
+        'https://builder.io',
         'http://localhost:3000',
         'https://4a5f0464c8f24a09bd2bc580e8c9401a-main.projects.builder.my'
     ],
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'Origin', 'Accept']
+    allowedHeaders: ['Content-Type', 'Authorization', 'Origin', 'Accept', 'X-Requested-With']
 }));
 
-const requireAdmin = async (req, res, next) => {
-    const authHeader = req.headers.authorization;
-    
-    if (!authHeader) {
-        return res.status(401).json({ error: 'Token manquant' });
-    }
+app.options('*', cors());
     
     const token = authHeader.split(' ')[1];
     
