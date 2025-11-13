@@ -39,7 +39,7 @@ const requireAdmin = async (req, res, next) => {
     const token = authHeader.split(' ')[1];
     
     const { data: user, error } = await supabase
-        .from('profiles')
+        .from('users')
         .select('*')
         .eq('email', token)
         .eq('role', 'admin')
@@ -65,7 +65,7 @@ app.post('/api/auth/register', async (req, res) => {
         }
 
         const { data: existingUser } = await supabase
-            .from('profiles')
+            .from('users')
             .select('email')
             .eq('email', email)
             .single();
@@ -80,8 +80,8 @@ app.post('/api/auth/register', async (req, res) => {
         trialEnd.setDate(trialEnd.getDate() + 14);
 
     
-        const { data: profileData, error: profileError } = await supabase
-            .from('profiles')
+        const { data: userData, error: userError } = await supabase
+            .from('users')
             .insert([
                 {
                     email: email,
@@ -95,14 +95,14 @@ app.post('/api/auth/register', async (req, res) => {
             ])
             .select();
 
-        if (profileError) {
-            console.error('Erreur Supabase:', profileError);
-            return res.status(400).json({ error: 'Erreur base de données: ' + profileError.message });
+        if (userError) {
+            console.error('Erreur Supabase:', userError);
+            return res.status(400).json({ error: 'Erreur base de données: ' + userError.message });
         }
 
         const token = jwt.sign(
             { 
-                userId: profileData[0].id,
+                userId: userData[0].id,
                 email: email,
                 name: name
             },
@@ -115,7 +115,7 @@ app.post('/api/auth/register', async (req, res) => {
             message: 'Utilisateur créé avec essai gratuit de 14 jours',
             token: token,
             user: {
-                id: profileData[0].id,
+                id: userData[0].id,
                 email: email,
                 name: name,
                 role: 'user',
@@ -134,7 +134,7 @@ app.post('/api/auth/login', async (req, res) => {
         const { email, password } = req.body;
         
         const { data: user, error: userError } = await supabase
-            .from('profiles')
+            .from('users')
             .select('*')
             .eq('email', email)
             .single();
@@ -183,7 +183,7 @@ app.get('/api/user/subscription-status/:userId', async (req, res) => {
         const { userId } = req.params;
         
         const { data: user, error } = await supabase
-            .from('profiles')
+            .from('users')
             .select('*')
             .eq('id', userId)
             .single();
@@ -562,7 +562,7 @@ app.post('/api/admin/activate-subscription', async (req, res) => {
         subscriptionEnd.setMonth(subscriptionEnd.getMonth() + months);
 
         const { data: user, error: userError } = await supabase
-            .from('profiles')
+            .from('users')
             .update({
                 subscription_type: 'premium',
                 subscription_end_date: subscriptionEnd.toISOString(),
@@ -597,7 +597,7 @@ app.get('/api/admin/search-users', async (req, res) => {
     try {
         const { email, name } = req.query;
         
-        let query = supabase.from('profiles').select('*');
+        let query = supabase.from('users').select('*');
         
         if (email) {
             query = query.ilike('email', `%${email}%`);
@@ -623,28 +623,28 @@ app.get('/api/admin/search-users', async (req, res) => {
 app.get('/api/admin/dashboard', requireAdmin, async (req, res) => {
     try {
         const { count: totalUsers } = await supabase
-            .from('profiles')
+            .from('users')
             .select('*', { count: 'exact', head: true });
 
         const today = new Date().toISOString().split('T')[0];
         const { count: todayUsers } = await supabase
-            .from('profiles')
+            .from('users')
             .select('*', { count: 'exact', head: true })
             .gte('created_at', today);
 
         const { count: activeTrials } = await supabase
-            .from('profiles')
+            .from('users')
             .select('*', { count: 'exact', head: true })
             .eq('subscription_type', 'trial')
             .gt('trial_ends_at', new Date().toISOString());
 
         const { count: premiumUsers } = await supabase
-            .from('profiles')
+            .from('users')
             .select('*', { count: 'exact', head: true })
             .eq('subscription_type', 'premium');
 
         const { count: expiredTrials } = await supabase
-            .from('profiles')
+            .from('users')
             .select('*', { count: 'exact', head: true })
             .eq('subscription_type', 'trial')
             .lt('trial_ends_at', new Date().toISOString());
@@ -674,28 +674,28 @@ app.get('/api/admin/dashboard', requireAdmin, async (req, res) => {
 app.get('/api/stats/public', async (req, res) => {
     try {
         const { count: totalUsers } = await supabase
-            .from('profiles')
+            .from('users')
             .select('*', { count: 'exact', head: true });
 
         const today = new Date().toISOString().split('T')[0];
         const { count: todayUsers } = await supabase
-            .from('profiles')
+            .from('users')
             .select('*', { count: 'exact', head: true })
             .gte('created_at', today);
 
         const { count: activeTrials } = await supabase
-            .from('profiles')
+            .from('users')
             .select('*', { count: 'exact', head: true })
             .eq('subscription_type', 'trial')
             .gt('trial_ends_at', new Date().toISOString());
 
         const { count: premiumUsers } = await supabase
-            .from('profiles')
+            .from('users')
             .select('*', { count: 'exact', head: true })
             .eq('subscription_type', 'premium');
 
         const { count: expiredTrials } = await supabase
-            .from('profiles')
+            .from('users')
             .select('*', { count: 'exact', head: true })
             .eq('subscription_type', 'trial')
             .lt('trial_ends_at', new Date().toISOString());
