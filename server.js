@@ -47,12 +47,6 @@ const requireAdmin = async (req, res, next) => {
     next();
 };
 
-    if (error || !user) {
-        return res.status(403).json({ error: 'Accès réservé à l\'administrateur' });
-    }
-    next();
-};
-
 app.get('/api/user/subscription-status/:userId', async (req, res) => {
     try {
         const { userId } = req.params;
