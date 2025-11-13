@@ -18,17 +18,16 @@ app.use(express.json());
 
 app.use(cors({
     origin: [
-        'https://samaboutiksn.netlify.app',
-        'https://builder.io',
-        'http://localhost:3000',
-        'https://4a5f0464c8f24a09bd2bc580e8c9401a-main.projects.builder.my',
-        'https://4a5f0464c8f24a09bd2bc580e8c9401a-9ae7243f6c3f4aa0bdc46c3f9.fly.dev'
+        'https://samaboutiksn.netlify.app',  
+        'https://builder.io',                
+        'http://localhost:3000',             
+        'https://4a5f0464c8f24a09bd2bc580e8c9401a-main.projects.builder.my',  
+        'https://4a5f0464c8f24a09bd2bc580e8c9401a-9ae7243f6c3f4aa0bdc46c3f9.fly.dev'  
     ],
-    credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'Origin', 'Accept', 'X-Requested-With']
+    credentials: true,                       
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],  
+    allowedHeaders: ['Content-Type', 'Authorization', 'Origin', 'Accept', 'X-Requested-With']  
 }));
-
 app.post('/api/auth/register', async (req, res) => {
     try {
         const { email, password, name } = req.body;
