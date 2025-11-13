@@ -1,6 +1,11 @@
 const { createClient } = require('@supabase/supabase-js');
 const express = require('express');
 const cors = require('cors');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+const dotenv = require('dotenv');
+
+dotenv.config();
 
 const supabaseUrl = 'https://meaczpmwhfponrjdxmmi.supabase.co';
 const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1lYWN6cG13aGZwb25yamR4bW1pIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI1NzkzMjYsImV4cCI6MjA3ODE1NTMyNn0.Gp25mFEAm5L4cKBm5BXsIqmEik81oxkqgc8nqfh9s1s';
@@ -16,7 +21,8 @@ app.use(cors({
         'https://samaboutiksn.netlify.app',
         'https://builder.io',
         'http://localhost:3000',
-        'https://4a5f0464c8f24a09bd2bc580e8c9401a-main.projects.builder.my'
+        'https://4a5f0464c8f24a09bd2bc580e8c9401a-main.projects.builder.my',
+        'https://4a5f0464c8f24a09bd2bc580e8c9401a-9ae7243f6c3f4aa0bdc46c3f9.fly.dev'
     ],
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
@@ -46,6 +52,141 @@ const requireAdmin = async (req, res, next) => {
     }
     next();
 };
+
+app.post('/api/auth/register', async (req, res) => {
+    try {
+        const { email, password, name } = req.body;
+        
+        if (!email || !password || !name) {
+            return res.status(400).json({ error: 'Tous les champs sont requis' });
+        }
+
+        const { data: existingUser } = await supabase
+            .from('profiles')
+            .select('email')
+            .eq('email', email)
+            .single();
+
+        if (existingUser) {
+            return res.status(400).json({ error: 'Cet email est déjà utilisé' });
+        }
+
+        const hashedPassword = await bcrypt.hash(password, 12);
+
+        const trialEnd = new Date();
+        trialEnd.setDate(trialEnd.getDate() + 14);
+
+        const { data: authData, error: authError } = await supabase.auth.signUp({
+            email: email,
+            password: password
+        });
+
+        if (authError) {
+            return res.status(400).json({ error: authError.message });
+        }
+
+        if (!authData.user) {
+            return res.status(400).json({ error: 'Échec création utilisateur' });
+        }
+
+        const { data: profileData, error: profileError } = await supabase
+            .from('profiles')
+            .insert([
+                {
+                    id: authData.user.id,
+                    email: email,
+                    full_name: name,
+                    subscription_type: 'trial',
+                    trial_ends_at: trialEnd.toISOString(),
+                    role: 'user',
+                    email_verified: true,
+                    password_hash: hashedPassword
+                }
+            ])
+            .select();
+
+        if (profileError) {
+            return res.status(400).json({ error: 'Erreur profil: ' + profileError.message });
+        }
+
+        const token = jwt.sign(
+            { 
+                userId: authData.user.id,
+                email: email,
+                name: name
+            },
+            process.env.JWT_SECRET || 'default-secret',
+            { expiresIn: '24h' }
+        );
+
+        res.json({ 
+            success: true,
+            message: 'Utilisateur créé avec essai gratuit de 14 jours',
+            token: token,
+            user: {
+                id: authData.user.id,
+                email: email,
+                name: name,
+                role: 'user',
+                subscription_type: 'trial',
+                trial_ends_at: trialEnd.toISOString()
+            }
+        });
+
+    } catch (error) {
+        console.error('Erreur inscription:', error);
+        res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
+
+app.post('/api/auth/login', async (req, res) => {
+    try {
+        const { email, password } = req.body;
+        
+        const { data: user, error: userError } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('email', email)
+            .single();
+
+        if (userError || !user) {
+            return res.status(401).json({ error: 'Email ou mot de passe incorrect' });
+        }
+
+        const validPassword = await bcrypt.compare(password, user.password_hash);
+        if (!validPassword) {
+            return res.status(401).json({ error: 'Email ou mot de passe incorrect' });
+        }
+
+        const token = jwt.sign(
+            { 
+                userId: user.id,
+                email: user.email,
+                name: user.full_name
+            },
+            process.env.JWT_SECRET || 'default-secret',
+            { expiresIn: '24h' }
+        );
+
+        res.json({
+            message: 'Connexion réussie',
+            token: token,
+            user: {
+                id: user.id,
+                email: user.email,
+                name: user.full_name,
+                role: user.role,
+                subscription_type: user.subscription_type,
+                trial_ends_at: user.trial_ends_at,
+                subscription_end_date: user.subscription_end_date
+            }
+        });
+
+    } catch (error) {
+        console.error('Erreur connexion:', error);
+        res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
 
 app.get('/api/user/subscription-status/:userId', async (req, res) => {
     try {
@@ -195,263 +336,6 @@ app.get('/api/invoices/user/:userId', async (req, res) => {
 
     } catch (error) {
         console.error('Erreur factures:', error);
-        res.status(500).json({ error: 'Erreur serveur' });
-    }
-});
-
-app.post('/api/invoices/generate-pdf', async (req, res) => {
-    try {
-        const { invoice_data } = req.body;
-        
-        const htmlContent = `
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <style>
-                body { 
-                    font-family: 'Inter', sans-serif; 
-                    margin: 0; 
-                    padding: 40px;
-                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                }
-                .invoice-container {
-                    max-width: 800px;
-                    margin: 0 auto;
-                    background: white;
-                    border-radius: 16px;
-                    box-shadow: 0 20px 60px rgba(0,0,0,0.1);
-                    overflow: hidden;
-                }
-                .invoice-header {
-                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                    color: white;
-                    padding: 40px;
-                    text-align: center;
-                }
-                .invoice-body {
-                    padding: 40px;
-                }
-                .company-info, .client-info {
-                    margin-bottom: 30px;
-                }
-                .items-table {
-                    width: 100%;
-                    border-collapse: collapse;
-                    margin: 30px 0;
-                }
-                .items-table th {
-                    background: #f8fafc;
-                    padding: 15px;
-                    text-align: left;
-                    border-bottom: 2px solid #e2e8f0;
-                }
-                .items-table td {
-                    padding: 15px;
-                    border-bottom: 1px solid #e2e8f0;
-                }
-                .total-section {
-                    background: #f8fafc;
-                    padding: 20px;
-                    border-radius: 8px;
-                    margin-top: 30px;
-                }
-                .status-badge {
-                    background: #48bb78;
-                    color: white;
-                    padding: 8px 16px;
-                    border-radius: 20px;
-                    font-size: 14px;
-                    font-weight: 600;
-                }
-            </style>
-        </head>
-        <body>
-            <div class="invoice-container">
-                <div class="invoice-header">
-                    <h1>🚀 VOTRE ENTREPRISE</h1>
-                    <h2>Facture ${invoice_data.number}</h2>
-                </div>
-                <div class="invoice-body">
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 40px;">
-                        <div class="company-info">
-                            <h3>Entreprise</h3>
-                            <p><strong>${invoice_data.company.name}</strong></p>
-                            <p>${invoice_data.company.email}</p>
-                            <p>${invoice_data.company.phone}</p>
-                            <p>${invoice_data.company.address}</p>
-                        </div>
-                        <div class="client-info">
-                            <h3>Client</h3>
-                            <p><strong>${invoice_data.client.name}</strong></p>
-                            <p>${invoice_data.client.email}</p>
-                            <p>Date: ${invoice_data.date}</p>
-                            <div class="status-badge">${invoice_data.status}</div>
-                        </div>
-                    </div>
-                    
-                    <table class="items-table">
-                        <thead>
-                            <tr>
-                                <th>Description</th>
-                                <th>Quantité</th>
-                                <th>Prix Unitaire</th>
-                                <th>Total</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${invoice_data.items.map(item => `
-                                <tr>
-                                    <td>
-                                        <strong>${item.name}</strong><br>
-                                        <small>${item.description}</small>
-                                    </td>
-                                    <td>${item.quantity}</td>
-                                    <td>${item.price.toLocaleString()} FCFA</td>
-                                    <td>${item.total.toLocaleString()} FCFA</td>
-                                </tr>
-                            `).join('')}
-                        </tbody>
-                    </table>
-                    
-                    <div class="total-section">
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
-                            <div>
-                                <p><strong>Méthode de paiement:</strong></p>
-                                <p>${invoice_data.payment_method}</p>
-                            </div>
-                            <div>
-                                <p><strong>Sous-total:</strong> ${invoice_data.subtotal.toLocaleString()} FCFA</p>
-                                <p><strong>TVA (0%):</strong> ${invoice_data.tax.toLocaleString()} FCFA</p>
-                                <p><strong>Total TTC:</strong> ${invoice_data.total.toLocaleString()} FCFA</p>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div style="text-align: center; margin-top: 40px; color: #718096;">
-                        <p>Merci pour votre confiance ! 🎉</p>
-                        <p>Facture générée automatiquement</p>
-                    </div>
-                </div>
-            </div>
-        </body>
-        </html>
-        `;
-
-        res.json({ 
-            success: true,
-            html: htmlContent,
-            message: 'Facture premium générée'
-        });
-
-    } catch (error) {
-        console.error('Erreur génération facture:', error);
-        res.status(500).json({ error: 'Erreur serveur' });
-    }
-});
-
-app.post('/api/auth/register', async (req, res) => {
-    try {
-        const { email, password, name } = req.body;
-        
-        if (!email || !password || !name) {
-            return res.status(400).json({ error: 'Tous les champs sont requis' });
-        }
-
-        const { data: existingUser } = await supabase
-            .from('profiles')
-            .select('email')
-            .eq('email', email)
-            .single();
-
-        if (existingUser) {
-            return res.status(400).json({ error: 'Cet email est déjà utilisé' });
-        }
-
-        const { data: authData, error: authError } = await supabase.auth.signUp({
-            email: email,
-            password: password
-        });
-
-        if (authError) {
-            return res.status(400).json({ error: authError.message });
-        }
-
-        if (!authData.user) {
-            return res.status(400).json({ error: 'Échec création utilisateur' });
-        }
-
-        const trialEnd = new Date();
-        trialEnd.setDate(trialEnd.getDate() + 14);
-
-        const { data: profileData, error: profileError } = await supabase
-            .from('profiles')
-            .insert([
-                {
-                    id: authData.user.id,
-                    email: email,
-                    full_name: name,
-                    subscription_type: 'trial',
-                    trial_ends_at: trialEnd.toISOString(),
-                    role: 'user',
-                    email_verified: true
-                }
-            ])
-            .select();
-
-        if (profileError) {
-            return res.status(400).json({ error: 'Erreur profil: ' + profileError.message });
-        }
-
-        res.json({ 
-            success: true,
-            message: 'Utilisateur créé avec essai gratuit de 14 jours',
-            userId: authData.user.id
-        });
-
-    } catch (error) {
-        console.error('Erreur inscription:', error);
-        res.status(500).json({ error: 'Erreur serveur' });
-    }
-});
-
-app.post('/api/auth/login', async (req, res) => {
-    try {
-        const { email, password } = req.body;
-        
-        const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-            email: email,
-            password: password
-        });
-
-        if (authError) {
-            return res.status(401).json({ error: 'Email ou mot de passe incorrect' });
-        }
-
-        const { data: user, error: userError } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', authData.user.id)
-            .single();
-
-        if (userError) {
-            return res.status(500).json({ error: 'Erreur base de données' });
-        }
-
-        res.json({
-            message: 'Connexion réussie',
-            user: {
-                id: user.id,
-                email: user.email,
-                name: user.full_name,
-                role: user.role,
-                subscription_type: user.subscription_type,
-                trial_ends_at: user.trial_ends_at,
-                subscription_end_date: user.subscription_end_date
-            }
-        });
-
-    } catch (error) {
-        console.error('Erreur connexion:', error);
         res.status(500).json({ error: 'Erreur serveur' });
     }
 });
