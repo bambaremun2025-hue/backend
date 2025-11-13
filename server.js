@@ -53,10 +53,12 @@ const requireAdmin = async (req, res, next) => {
 
 app.post('/api/auth/register', async (req, res) => {
     try {
-        const { email, password, name } = req.body;
+        const { email, password, username, business, type, name } = req.body;
+   
+        const userName = name || username || business || email;
         
-        if (!email || !password || !name) {
-            return res.status(400).json({ error: 'Tous les champs sont requis' });
+        if (!email || !password || !userName) {
+            return res.status(400).json({ error: 'Email, mot de passe et nom sont requis' });
         }
 
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -79,13 +81,12 @@ app.post('/api/auth/register', async (req, res) => {
         const trialEnd = new Date();
         trialEnd.setDate(trialEnd.getDate() + 14);
 
-    
         const { data: userData, error: userError } = await supabase
             .from('users')
             .insert([
                 {
                     email: email,
-                    full_name: name,
+                    full_name: userName,  
                     subscription_type: 'trial',
                     trial_ends_at: trialEnd.toISOString(),
                     role: 'user',
@@ -104,7 +105,7 @@ app.post('/api/auth/register', async (req, res) => {
             { 
                 userId: userData[0].id,
                 email: email,
-                name: name
+                name: userName
             },
             process.env.JWT_SECRET || 'default-secret',
             { expiresIn: '24h' }
@@ -117,7 +118,7 @@ app.post('/api/auth/register', async (req, res) => {
             user: {
                 id: userData[0].id,
                 email: email,
-                name: name,
+                name: userName,
                 role: 'user',
                 subscription_type: 'trial',
                 trial_ends_at: trialEnd.toISOString()
