@@ -598,7 +598,7 @@ app.get('/api/admin/dashboard', requireAdmin, async (req, res) => {
     try {
         const { count: totalUsers } = await supabase
             .from('profiles')
-            .select('*', { count: 'exact', head: true );
+            .select('*', { count: 'exact', head: true });
 
         const today = new Date().toISOString().split('T')[0];
         const { count: todayUsers } = await supabase
@@ -649,7 +649,7 @@ app.get('/api/stats/public', async (req, res) => {
     try {
         const { count: totalUsers } = await supabase
             .from('profiles')
-            .select('*', { count: 'exact', head: true );
+            .select('*', { count: 'exact', head: true });
 
         const today = new Date().toISOString().split('T')[0];
         const { count: todayUsers } = await supabase
