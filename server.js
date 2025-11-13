@@ -40,8 +40,14 @@ const requireAdmin = async (req, res, next) => {
     
     try {
         const decoded = jwt.verify(token, process.env.JWT_SECRET || 'default-secret');
-    
-        if (decoded.role !== 'admin') {
+        
+        const { data: user, error } = await supabase
+            .from('users')
+            .select('role')
+            .eq('id', decoded.userId)
+            .single();
+
+        if (error || !user || user.role !== 'admin') {
             return res.status(403).json({ error: 'Accès réservé à l\'administrateur' });
         }
         
