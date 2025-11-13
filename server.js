@@ -90,7 +90,7 @@ app.post('/api/auth/register', async (req, res) => {
                     trial_ends_at: trialEnd.toISOString(),
                     role: 'user',
                     email_verified: true,
-                    password_hash: hashedPassword
+                    user_password: hashedPassword
                 }
             ])
             .select();
