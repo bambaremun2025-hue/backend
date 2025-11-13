@@ -9,10 +9,8 @@ const supabase = createClient(supabaseUrl, supabaseAnonKey);
 const app = express();
 const PORT = process.env.PORT || 10000;
 
-// D'ABORD express.json()
 app.use(express.json());
 
-// PUIS CORS - CORRIGÉ (APRÈS express.json)
 app.use(cors({
     origin: [
         'https://samaboutiksn.netlify.app',
