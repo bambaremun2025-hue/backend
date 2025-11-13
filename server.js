@@ -24,6 +24,13 @@ app.use(cors({
 }));
 
 app.options('*', cors());
+
+const requireAdmin = async (req, res, next) => {
+    const authHeader = req.headers.authorization;
+    
+    if (!authHeader) {
+        return res.status(401).json({ error: 'Token manquant' });
+    }
     
     const token = authHeader.split(' ')[1];
     
@@ -33,6 +40,12 @@ app.options('*', cors());
         .eq('email', token)
         .eq('role', 'admin')
         .single();
+
+    if (error || !user) {
+        return res.status(403).json({ error: 'Accès réservé à l\'administrateur' });
+    }
+    next();
+};
 
     if (error || !user) {
         return res.status(403).json({ error: 'Accès réservé à l\'administrateur' });
