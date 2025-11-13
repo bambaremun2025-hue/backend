@@ -9,8 +9,13 @@ const supabase = createClient(supabaseUrl, supabaseAnonKey);
 const app = express();
 const PORT = process.env.PORT || 10000;
 
+// CORS FIX - AJOUTÉ ICI
 app.use(cors({
-    origin: '*',
+    origin: [
+        'https://samaboutiksn.netlify.app',
+        'http://localhost:3000',
+        'https://4a5f0464c8f24a09bd2bc580e8c9401a-main.projects.builder.my'
+    ],
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization']
@@ -593,7 +598,7 @@ app.get('/api/admin/dashboard', requireAdmin, async (req, res) => {
     try {
         const { count: totalUsers } = await supabase
             .from('profiles')
-            .select('*', { count: 'exact', head: true });
+            .select('*', { count: 'exact', head: true );
 
         const today = new Date().toISOString().split('T')[0];
         const { count: todayUsers } = await supabase
@@ -644,7 +649,7 @@ app.get('/api/stats/public', async (req, res) => {
     try {
         const { count: totalUsers } = await supabase
             .from('profiles')
-            .select('*', { count: 'exact', head: true });
+            .select('*', { count: 'exact', head: true );
 
         const today = new Date().toISOString().split('T')[0];
         const { count: todayUsers } = await supabase
