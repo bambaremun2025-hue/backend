@@ -804,6 +804,51 @@ app.post('/api/sales', async (req, res) => {
         res.status(500).json({ error: 'Erreur serveur' });
     }
 });
+app.get('/api/admin/users', requireAdmin, async (req, res) => {
+    try {
+        const { data: users, error } = await supabase
+            .from('users')
+            .select('*')
+            .order('created_at', { ascending: false });
+
+        if (error) throw error;
+        res.json(users || []);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+app.get('/api/admin/subscriptions', requireAdmin, async (req, res) => {
+    try {
+        const { data: users, error } = await supabase
+            .from('users')
+            .select('subscription_type, created_at');
+
+        if (error) throw error;
+        
+        const stats = {
+            total: users.length,
+            trial: users.filter(u => u.subscription_type === 'trial').length,
+            premium: users.filter(u => u.subscription_type === 'premium').length
+        };
+        
+        res.json(stats);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+app.get('/api/admin/products', requireAdmin, async (req, res) => {
+    try {
+        const { data: products, error } = await supabase
+            .from('products')
+            .select('*')
+            .order('created_at', { ascending: false });
+
+        if (error) throw error;
+        res.json(products || []);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
 app.get('/api/admin/sales', requireAdmin, async (req, res) => {
     try {
         const { data: sales, error } = await supabase
