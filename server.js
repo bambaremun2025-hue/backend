@@ -804,7 +804,23 @@ app.post('/api/sales', async (req, res) => {
         res.status(500).json({ error: 'Erreur serveur' });
     }
 });
+app.get('/api/admin/sales', requireAdmin, async (req, res) => {
+    try {
+        const { data: sales, error } = await supabase
+            .from('sales')
+            .select(`
+                *,
+                products (name),
+                users (email)
+            `)
+            .order('created_at', { ascending: false });
 
+        if (error) throw error;
+        res.json(sales || []);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
 app.get('/api/health', (req, res) => {
     res.json({
         status: 'OK',
