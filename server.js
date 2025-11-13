@@ -84,7 +84,6 @@ app.post('/api/auth/register', async (req, res) => {
             .from('profiles')
             .insert([
                 {
-                    id: require('crypto').randomUUID(),
                     email: email,
                     full_name: name,
                     subscription_type: 'trial',
