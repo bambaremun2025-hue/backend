@@ -559,47 +559,40 @@ app.post('/api/payments/naboostart-initiate', async (req, res) => {
     }
 });
 
-app.post('/api/admin/activate-subscription', async (req, res) => {
+app.post('/api/admin/activate-subscription', requireAdmin, async (req, res) => {
     try {
         const { userEmail, months = 1 } = req.body;
-        
-        const authHeader = req.headers.authorization;
-        if (!authHeader || !authHeader.includes('admin')) {
-            return res.status(403).json({ error: 'Accès admin requis' });
-        }
-
+    
         const subscriptionEnd = new Date();
         subscriptionEnd.setMonth(subscriptionEnd.getMonth() + months);
 
-        const { data: user, error: userError } = await supabase
+        const { data: user, error } = await supabase
             .from('users')
             .update({
                 subscription_type: 'premium',
                 subscription_end_date: subscriptionEnd.toISOString(),
                 is_premium: true,
-                activated_by: 'admin_manual',
+                activated_by: 'admin',
                 activated_at: new Date().toISOString()
             })
             .eq('email', userEmail)
             .select();
 
-        if (userError) {
-            return res.status(500).json({ error: 'Erreur base de données: ' + userError.message });
-        }
-
+        if (error) throw error;
+        
         if (!user || user.length === 0) {
-            return res.status(404).json({ error: 'Utilisateur non trouvé: ' + userEmail });
+            return res.status(404).json({ error: 'Utilisateur non trouvé' });
         }
 
         res.json({ 
             success: true,
-            message: `Abonnement activé pour ${userEmail} jusqu'au ${subscriptionEnd.toLocaleDateString('fr-FR')}`,
+            message: `Abonnement activé pour ${userEmail}`,
             user: user[0]
         });
 
     } catch (error) {
-        console.error('Erreur activation manuelle:', error);
-        res.status(500).json({ error: 'Erreur serveur' });
+        console.error('Erreur activation:', error);
+        res.status(500).json({ error: error.message });
     }
 });
 
