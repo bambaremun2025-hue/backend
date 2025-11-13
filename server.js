@@ -102,15 +102,7 @@ app.post('/api/auth/register', async (req, res) => {
             return res.status(400).json({ error: 'Erreur base de données: ' + userError.message });
         }
 
-        const token = jwt.sign(
-            { 
-                userId: userData[0].id,
-                email: email,
-                name: userName
-            },
-            process.env.JWT_SECRET || 'default-secret',
-            { expiresIn: '24h' }
-        );
+       {"error":"Accès réservé à l'administrateur"}{"error":"Accès réservé à l'administrateur"}{"error":"Accès réservé à l'administrateur"}{"error":"Accès réservé à l'administrateur"}%             sowsowhotmail.it@Host-001 backend % 
 
         res.json({ 
             success: true,
@@ -150,15 +142,16 @@ app.post('/api/auth/login', async (req, res) => {
             return res.status(401).json({ error: 'Email ou mot de passe incorrect' });
         }
 
-        const token = jwt.sign(
-            { 
-                userId: user.id,
-                email: user.email,
-                name: user.full_name
-            },
-            process.env.JWT_SECRET || 'default-secret',
-            { expiresIn: '24h' }
-        );
+       const token = jwt.sign(
+    { 
+        userId: user.id,
+        email: user.email,
+        name: user.full_name,
+        role: user.role  
+    },
+    process.env.JWT_SECRET || 'default-secret',
+    { expiresIn: '24h' }
+);
 
         res.json({
             message: 'Connexion réussie',
