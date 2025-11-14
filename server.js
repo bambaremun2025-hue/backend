@@ -950,7 +950,7 @@ app.get('/api/admin/subscription-details', requireAdmin, async (req, res) => {
     try {
         const { data: users, error } = await supabase
             .from('users')
-            .select('id, email, full_name, subscription_type, created_at, trial_ends_at, subscription_end_date, activated_at')
+            .select('id, email, full_name, subscription_type, created_at, trial_ends_at, subscription_end_date, activated_at, is_premium')
             .order('created_at', { ascending: false });
 
         if (error) throw error;
@@ -958,22 +958,49 @@ app.get('/api/admin/subscription-details', requireAdmin, async (req, res) => {
         const subscriptionDetails = users.map(user => {
             const startDate = user.activated_at || user.created_at;
             const endDate = user.subscription_type === 'premium' ? user.subscription_end_date : user.trial_ends_at;
-            const daysRemaining = endDate ? Math.ceil((new Date(endDate) - new Date()) / (1000 * 60 * 60 * 24)) : null;
             
+            let daysRemaining = null;
+            let status = 'Inactif';
+            
+            if (endDate) {
+                const end = new Date(endDate);
+                const now = new Date();
+                daysRemaining = Math.ceil((end - now) / (1000 * 60 * 60 * 24));
+                
+                if (daysRemaining > 0) {
+                    status = 'Actif';
+                } else {
+                    status = 'Expiré';
+                }
+            }
+            
+            const formatDate = (dateString) => {
+                if (!dateString) return 'N/A';
+                try {
+                    return new Date(dateString).toLocaleDateString('fr-FR');
+                } catch {
+                    return 'Date invalide';
+                }
+            };
+
             return {
                 id: user.id,
                 email: user.email,
                 name: user.full_name,
                 subscription_type: user.subscription_type,
+                is_premium: user.is_premium,
                 start_date: startDate,
+                start_date_formatted: formatDate(startDate),
                 end_date: endDate,
+                end_date_formatted: formatDate(endDate),
                 days_remaining: daysRemaining,
-                status: daysRemaining > 0 ? 'Actif' : 'Expiré'
+                status: status
             };
         });
 
         res.json(subscriptionDetails);
     } catch (error) {
+        console.error('Erreur subscription details:', error);
         res.status(500).json({ error: error.message });
     }
 });
