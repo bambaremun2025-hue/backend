@@ -946,6 +946,37 @@ app.post('/api/admin/cancel-subscription', requireAdmin, async (req, res) => {
         res.status(500).json({ error: error.message });
     }
 });
+app.get('/api/admin/subscription-details', requireAdmin, async (req, res) => {
+    try {
+        const { data: users, error } = await supabase
+            .from('users')
+            .select('id, email, full_name, subscription_type, created_at, trial_ends_at, subscription_end_date, activated_at')
+            .order('created_at', { ascending: false });
+
+        if (error) throw error;
+        
+        const subscriptionDetails = users.map(user => {
+            const startDate = user.activated_at || user.created_at;
+            const endDate = user.subscription_type === 'premium' ? user.subscription_end_date : user.trial_ends_at;
+            const daysRemaining = endDate ? Math.ceil((new Date(endDate) - new Date()) / (1000 * 60 * 60 * 24)) : null;
+            
+            return {
+                id: user.id,
+                email: user.email,
+                name: user.full_name,
+                subscription_type: user.subscription_type,
+                start_date: startDate,
+                end_date: endDate,
+                days_remaining: daysRemaining,
+                status: daysRemaining > 0 ? 'Actif' : 'Expiré'
+            };
+        });
+
+        res.json(subscriptionDetails);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
 app.get('/api/health', (req, res) => {
     res.json({
         status: 'OK',
