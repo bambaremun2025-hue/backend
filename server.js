@@ -48,7 +48,6 @@ const requireAdmin = async (req, res, next) => {
             .single();
 
         if (error) {
-            console.error('Erreur Supabase:', error);
             return res.status(403).json({ error: 'Erreur de vérification admin' });
         }
 
@@ -63,7 +62,6 @@ const requireAdmin = async (req, res, next) => {
         req.user = decoded;
         next();
     } catch (error) {
-        console.error('Erreur token:', error);
         return res.status(403).json({ error: 'Token invalide' });
     }
 };
@@ -114,20 +112,20 @@ app.post('/api/auth/register', async (req, res) => {
             .select();
 
         if (userError) {
-            console.error('Erreur Supabase:', userError);
             return res.status(400).json({ error: 'Erreur base de données: ' + userError.message });
         }
 
         const token = jwt.sign(
-    { 
-        userId: userData[0].id,
-        email: email,
-        name: userName,
-        role: 'user'
-    },
-    process.env.JWT_SECRET || 'default-secret',
-    { expiresIn: '24h' }
-);
+            { 
+                userId: userData[0].id,
+                email: email,
+                name: userName,
+                role: 'user'
+            },
+            process.env.JWT_SECRET || 'default-secret',
+            { expiresIn: '24h' }
+        );
+
         res.json({ 
             success: true,
             message: 'Utilisateur créé avec essai gratuit de 14 jours',
@@ -143,10 +141,10 @@ app.post('/api/auth/register', async (req, res) => {
         });
 
     } catch (error) {
-        console.error('Erreur inscription:', error);
         res.status(500).json({ error: 'Erreur serveur' });
     }
 });
+
 app.post('/api/auth/login', async (req, res) => {
     try {
         const { email, password } = req.body;
@@ -166,16 +164,16 @@ app.post('/api/auth/login', async (req, res) => {
             return res.status(401).json({ error: 'Email ou mot de passe incorrect' });
         }
 
-       const token = jwt.sign(
-    { 
-        userId: user.id,
-        email: user.email,
-        name: user.full_name,
-        role: user.role  
-    },
-    process.env.JWT_SECRET || 'default-secret',
-    { expiresIn: '24h' }
-);
+        const token = jwt.sign(
+            { 
+                userId: user.id,
+                email: user.email,
+                name: user.full_name,
+                role: user.role  
+            },
+            process.env.JWT_SECRET || 'default-secret',
+            { expiresIn: '24h' }
+        );
 
         res.json({
             message: 'Connexion réussie',
@@ -192,7 +190,6 @@ app.post('/api/auth/login', async (req, res) => {
         });
 
     } catch (error) {
-        console.error('Erreur connexion:', error);
         res.status(500).json({ error: 'Erreur serveur' });
     }
 });
@@ -276,7 +273,6 @@ app.get('/api/user/subscription-status/:userId', async (req, res) => {
         });
 
     } catch (error) {
-        console.error('Erreur statut abonnement:', error);
         res.status(500).json({ error: 'Erreur serveur' });
     }
 });
@@ -322,7 +318,6 @@ app.post('/api/invoices/generate', async (req, res) => {
         });
 
     } catch (error) {
-        console.error('Erreur génération facture:', error);
         res.status(500).json({ error: 'Erreur serveur' });
     }
 });
@@ -344,7 +339,6 @@ app.get('/api/invoices/user/:userId', async (req, res) => {
         res.json({ invoices: invoices || [] });
 
     } catch (error) {
-        console.error('Erreur factures:', error);
         res.status(500).json({ error: 'Erreur serveur' });
     }
 });
@@ -494,7 +488,6 @@ app.post('/api/invoices/generate-pdf', async (req, res) => {
         });
 
     } catch (error) {
-        console.error('Erreur génération facture:', error);
         res.status(500).json({ error: 'Erreur serveur' });
     }
 });
@@ -560,48 +553,10 @@ app.post('/api/payments/naboostart-initiate', async (req, res) => {
         }
         
     } catch (error) {
-        console.error('Erreur NABOOPAY:', error);
         res.status(500).json({ 
             success: false,
             error: 'Erreur de connexion au service de paiement' 
         });
-    }
-});
-
-app.post('/api/admin/activate-subscription', requireAdmin, async (req, res) => {
-    try {
-        const { userEmail, months = 1 } = req.body;
-    
-        const subscriptionEnd = new Date();
-        subscriptionEnd.setMonth(subscriptionEnd.getMonth() + months);
-
-        const { data: user, error } = await supabase
-            .from('users')
-            .update({
-                subscription_type: 'premium',
-                subscription_end_date: subscriptionEnd.toISOString(),
-                is_premium: true,
-                activated_by: 'admin',
-                activated_at: new Date().toISOString()
-            })
-            .eq('email', userEmail)
-            .select();
-
-        if (error) throw error;
-        
-        if (!user || user.length === 0) {
-            return res.status(404).json({ error: 'Utilisateur non trouvé' });
-        }
-
-        res.json({ 
-            success: true,
-            message: `Abonnement activé pour ${userEmail}`,
-            user: user[0]
-        });
-
-    } catch (error) {
-        console.error('Erreur activation:', error);
-        res.status(500).json({ error: error.message });
     }
 });
 
@@ -627,7 +582,6 @@ app.get('/api/admin/search-users', async (req, res) => {
         res.json({ users: users || [] });
 
     } catch (error) {
-        console.error('Erreur recherche users:', error);
         res.status(500).json({ error: 'Erreur serveur' });
     }
 });
@@ -678,7 +632,6 @@ app.get('/api/admin/dashboard', requireAdmin, async (req, res) => {
         });
 
     } catch (error) {
-        console.error('Erreur dashboard:', error);
         res.status(500).json({ error: 'Erreur serveur' });
     }
 });
@@ -733,88 +686,6 @@ app.get('/api/stats/public', async (req, res) => {
     }
 });
 
-app.post('/api/products', async (req, res) => {
-    try {
-        const { name, price, stock, purchase_price, category } = req.body;
-        
-        if (!name || !price || !stock) {
-            return res.status(400).json({ error: 'Nom, prix et stock sont requis' });
-        }
-
-        const { data: product, error } = await supabase
-            .from('products')
-            .insert([
-                {
-                    name: name,
-                    price: parseFloat(price),
-                    stock: parseInt(stock),
-                    purchase_price: purchase_price ? parseFloat(purchase_price) : null,
-                    category: category || 'Non catégorisé'
-                }
-            ])
-            .select();
-
-        if (error) {
-            return res.status(500).json({ error: 'Erreur création produit: ' + error.message });
-        }
-
-        res.json({ 
-            success: true,
-            message: 'Produit ajouté avec succès',
-            product: product[0]
-        });
-
-    } catch (error) {
-        console.error('Erreur ajout produit:', error);
-        res.status(500).json({ error: 'Erreur serveur' });
-    }
-});
-
-app.get('/api/products', async (req, res) => {
-    try {
-        const { data: products, error } = await supabase
-            .from('products')
-            .select('*');
-
-        if (error) {
-            return res.status(500).json({ error: 'Erreur base de données' });
-        }
-
-        res.json(products);
-
-    } catch (error) {
-        console.error('Erreur produits:', error);
-        res.status(500).json({ error: 'Erreur serveur' });
-    }
-});
-
-app.post('/api/sales', async (req, res) => {
-    try {
-        const { product_id, quantity, total_amount, user_id } = req.body;
-        
-        const { data: saleData, error } = await supabase
-            .from('sales')
-            .insert([
-                {
-                    product_id: product_id,
-                    quantity: quantity,
-                    total_amount: total_amount,
-                    user_id: user_id
-                }
-            ])
-            .select();
-
-        if (error) {
-            return res.status(500).json({ error: 'Erreur lors de l\'enregistrement' });
-        }
-
-        res.json({ message: 'Vente enregistrée', saleId: saleData[0].id });
-
-    } catch (error) {
-        console.error('Erreur vente:', error);
-        res.status(500).json({ error: 'Erreur serveur' });
-    }
-});
 app.get('/api/admin/users', requireAdmin, async (req, res) => {
     try {
         const { data: users, error } = await supabase
@@ -828,6 +699,7 @@ app.get('/api/admin/users', requireAdmin, async (req, res) => {
         res.status(500).json({ error: error.message });
     }
 });
+
 app.get('/api/admin/subscriptions', requireAdmin, async (req, res) => {
     try {
         const { data: users, error } = await supabase
@@ -847,6 +719,7 @@ app.get('/api/admin/subscriptions', requireAdmin, async (req, res) => {
         res.status(500).json({ error: error.message });
     }
 });
+
 app.get('/api/admin/products', requireAdmin, async (req, res) => {
     try {
         const { data: products, error } = await supabase
@@ -860,6 +733,7 @@ app.get('/api/admin/products', requireAdmin, async (req, res) => {
         res.status(500).json({ error: error.message });
     }
 });
+
 app.get('/api/admin/sales', requireAdmin, async (req, res) => {
     try {
         const { data: sales, error } = await supabase
@@ -877,6 +751,7 @@ app.get('/api/admin/sales', requireAdmin, async (req, res) => {
         res.status(500).json({ error: error.message });
     }
 });
+
 app.post('/api/admin/activate-subscription', requireAdmin, async (req, res) => {
     try {
         const { userEmail, months = 1 } = req.body;
@@ -909,10 +784,10 @@ app.post('/api/admin/activate-subscription', requireAdmin, async (req, res) => {
         });
 
     } catch (error) {
-        console.error('Erreur activation:', error);
         res.status(500).json({ error: error.message });
     }
 });
+
 app.post('/api/admin/cancel-subscription', requireAdmin, async (req, res) => {
     try {
         const { userEmail } = req.body;
@@ -942,10 +817,10 @@ app.post('/api/admin/cancel-subscription', requireAdmin, async (req, res) => {
         });
 
     } catch (error) {
-        console.error('Erreur annulation:', error);
         res.status(500).json({ error: error.message });
     }
 });
+
 app.get('/api/admin/subscription-details', requireAdmin, async (req, res) => {
     try {
         const { data: users, error } = await supabase
@@ -1000,11 +875,11 @@ app.get('/api/admin/subscription-details', requireAdmin, async (req, res) => {
 
         res.json(subscriptionDetails);
     } catch (error) {
-        console.error('Erreur subscription details:', error);
         res.status(500).json({ error: error.message });
     }
 });
-app.get('/api/products', requireAuth, async (req, res) => {
+
+app.get('/api/products', requireAdmin, async (req, res) => {
     try {
         const userId = req.user.userId;
         
@@ -1020,7 +895,8 @@ app.get('/api/products', requireAuth, async (req, res) => {
         res.status(500).json({ error: error.message });
     }
 });
-app.post('/api/products', requireAuth, async (req, res) => {
+
+app.post('/api/products', requireAdmin, async (req, res) => {
     try {
         const userId = req.user.userId;
         const { name, price, stock, category, description } = req.body;
@@ -1046,7 +922,8 @@ app.post('/api/products', requireAuth, async (req, res) => {
         res.status(500).json({ error: error.message });
     }
 });
-app.get('/api/sales', requireAuth, async (req, res) => {
+
+app.get('/api/sales', requireAdmin, async (req, res) => {
     try {
         const userId = req.user.userId;
         
@@ -1057,7 +934,7 @@ app.get('/api/sales', requireAuth, async (req, res) => {
                 products (name, price)
             `)
             .eq('user_id', userId)
-            .order('created_at', { ascending: false });
+            .order('created_at', { ascending: false );
 
         if (error) throw error;
         res.json(sales || []);
@@ -1065,14 +942,8 @@ app.get('/api/sales', requireAuth, async (req, res) => {
         res.status(500).json({ error: error.message });
     }
 });
-app.get('/api/health', (req, res) => {
-    res.json({
-        status: 'OK',
-        server: 'active',
-        timestamp: new Date().toISOString()
-    });
-});
-app.post('/api/sales', requireAuth, async (req, res) => {
+
+app.post('/api/sales', requireAdmin, async (req, res) => {
     try {
         const userId = req.user.userId;
         const { product_id, quantity, total_amount } = req.body;
@@ -1096,6 +967,14 @@ app.post('/api/sales', requireAuth, async (req, res) => {
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
+});
+
+app.get('/api/health', (req, res) => {
+    res.json({
+        status: 'OK',
+        server: 'active',
+        timestamp: new Date().toISOString()
+    });
 });
 
 app.get('/', (req, res) => {
