@@ -886,7 +886,7 @@ app.get('/api/products', requireAdmin, async (req, res) => {
         const { data: products, error } = await supabase
             .from('products')
             .select('*')
-            .eq('user_id', userId)
+            .eq('user_id', userId)  
             .order('created_at', { ascending: false });
 
         if (error) throw error;
@@ -933,7 +933,7 @@ app.get('/api/sales', requireAdmin, async (req, res) => {
                 *,
                 products (name, price)
             `)
-            .eq('user_id', userId)
+            .eq('user_id', userId)  
             .order('created_at', { ascending: false });
 
         if (error) throw error;
@@ -942,7 +942,6 @@ app.get('/api/sales', requireAdmin, async (req, res) => {
         res.status(500).json({ error: error.message });
     }
 });
-
 app.post('/api/sales', requireAdmin, async (req, res) => {
     try {
         const userId = req.user.userId;
