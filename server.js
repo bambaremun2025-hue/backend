@@ -173,7 +173,7 @@ app.post('/api/auth/register', async (req, res) => {
     } catch (error) {
         res.status(500).json({ error: 'Erreur serveur' });
     }
-});
+});  
 
 app.get('/api/user/subscription-status/:userId', async (req, res) => {
     try {
