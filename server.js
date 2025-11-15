@@ -899,7 +899,7 @@ app.get('/api/products', requireAdmin, async (req, res) => {
 app.post('/api/products', requireAdmin, async (req, res) => {
     try {
         const userId = req.user.userId;
-        const { name, price, stock, category } = req.body;
+        const { name, price, category, purchase_price } = req.body; 
         
         const { data: product, error } = await supabase
             .from('products')
@@ -908,19 +908,20 @@ app.post('/api/products', requireAdmin, async (req, res) => {
                     user_id: userId,
                     name,
                     price,
-                    stock,
                     category,
+                    purchase_price: purchase_price || null, 
+                    profit: 0, 
                     created_at: new Date().toISOString()
                 }
             ])
             .select();
 
-        if (error) throw error;  
-        res.json({ success: true, product: product[0] });  
+        if (error) throw error;
+        res.json({ success: true, product: product[0] });
     } catch (error) {
-        res.status(500).json({ error: error.message });  
+        res.status(500).json({ error: error.message });
     }
-}); 
+});
 
 app.get('/api/sales', requireAdmin, async (req, res) => {
     try {
