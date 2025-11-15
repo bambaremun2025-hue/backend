@@ -934,7 +934,7 @@ app.get('/api/sales', requireAdmin, async (req, res) => {
                 products (name, price)
             `)
             .eq('user_id', userId)
-            .order('created_at', { ascending: false );
+            .order('created_at', { ascending: false }); 
 
         if (error) throw error;
         res.json(sales || []);
