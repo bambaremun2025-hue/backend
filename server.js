@@ -1016,7 +1016,62 @@ app.get('/api/products/images', requireAdmin, async (req, res) => {
         res.status(500).json({ error: error.message });
     }
 });
+app.get('/api/debug/sync', requireAdmin, async (req, res) => {
+    try {
+        const userId = req.user.userId;
+        
+        console.log('🔍 DEBUG SYNC - UserId:', userId);
+        console.log('🔍 DEBUG SYNC - Token User:', req.user);
 
+        const { data: products, error: productsError } = await supabase
+            .from('products')
+            .select('*')
+            .eq('user_id', userId);
+
+        console.log('🔍 DEBUG SYNC - Products Error:', productsError);
+        console.log('🔍 DEBUG SYNC - Products Data:', products);
+
+        const { data: sales, error: salesError } = await supabase
+            .from('sales')
+            .select('*')
+            .eq('user_id', userId);
+
+        console.log('🔍 DEBUG SYNC - Sales Error:', salesError);
+        console.log('🔍 DEBUG SYNC - Sales Data:', sales);
+
+        const { data: user, error: userError } = await supabase
+            .from('users')
+            .select('*')
+            .eq('id', userId)
+            .single();
+
+        res.json({
+            success: true,
+            debug: {
+                userId: userId,
+                tokenUser: req.user,
+                userInDb: user,
+                products: {
+                    count: products?.length || 0,
+                    data: products,
+                    error: productsError
+                },
+                sales: {
+                    count: sales?.length || 0,
+                    data: sales,
+                    error: salesError
+                }
+            }
+        });
+
+    } catch (error) {
+        console.error('🔍 DEBUG SYNC - Error:', error);
+        res.status(500).json({ 
+            success: false,
+            error: error.message 
+        });
+    }
+});
 app.get('/api/health', (req, res) => {
     res.json({
         status: 'OK',
