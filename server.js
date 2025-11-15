@@ -968,6 +968,55 @@ app.post('/api/sales', requireAdmin, async (req, res) => {
         res.status(500).json({ error: error.message });
     }
 });
+app.post('/api/products/upload', requireAdmin, async (req, res) => {
+    try {
+        const userId = req.user.userId;
+        const { imageBase64, productId } = req.body;
+
+        const buffer = Buffer.from(imageBase64.split(',')[1], 'base64');
+        
+        const { data, error } = await supabase.storage
+            .from('product-images')
+            .upload(`${userId}/${productId}-${Date.now()}.jpg`, buffer, {
+                contentType: 'image/jpeg',
+                upsert: true
+            });
+
+        if (error) throw error;
+
+        const { data: { publicUrl } } = supabase.storage
+            .from('product-images')
+            .getPublicUrl(data.path);
+
+        const { error: updateError } = await supabase
+            .from('products')
+            .update({ image_url: publicUrl })
+            .select()
+            .eq('id', productId)
+            .eq('user_id', userId);
+
+        if (updateError) throw updateError;
+
+        res.json({ success: true, imageUrl: publicUrl });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.get('/api/products/images', requireAdmin, async (req, res) => {
+    try {
+        const userId = req.user.userId;
+        
+        const { data, error } = await supabase.storage
+            .from('product-images')
+            .list(`${userId}/`);
+
+        if (error) throw error;
+        res.json(data || []);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
 
 app.get('/api/health', (req, res) => {
     res.json({
