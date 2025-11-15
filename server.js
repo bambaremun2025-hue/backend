@@ -145,26 +145,7 @@ app.post('/api/auth/register', async (req, res) => {
     }
 });
 
-app.post('/api/auth/login', async (req, res) => {
-    try {
-        const { email, password } = req.body;
-        
-        const { data: user, error: userError } = await supabase
-            .from('users')
-            .select('*')
-            .eq('email', email)
-            .single();
-
-        if (userError || !user) {
-            return res.status(401).json({ error: 'Email ou mot de passe incorrect' });
-        }
-
-        const validPassword = await bcrypt.compare(password, user.user_password);
-        if (!validPassword) {
-            return res.status(401).json({ error: 'Email ou mot de passe incorrect' });
-        }
-
-        const token = jwt.sign(
+   const token = jwt.sign(
             { 
                 userId: user.id,
                 email: user.email,
