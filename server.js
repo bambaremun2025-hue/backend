@@ -899,7 +899,7 @@ app.get('/api/products', requireAdmin, async (req, res) => {
 app.post('/api/products', requireAdmin, async (req, res) => {
     try {
         const userId = req.user.userId;
-        const { name, price, stock, category } = req.body; // ✅ SANS description
+        const { name, price, stock, category } = req.body;
         
         const { data: product, error } = await supabase
             .from('products')
@@ -914,6 +914,13 @@ app.post('/api/products', requireAdmin, async (req, res) => {
                 }
             ])
             .select();
+
+        if (error) throw error;  
+        res.json({ success: true, product: product[0] });  
+    } catch (error) {
+        res.status(500).json({ error: error.message });  
+    }
+}); 
 
 app.get('/api/sales', requireAdmin, async (req, res) => {
     try {
