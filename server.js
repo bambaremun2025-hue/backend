@@ -1004,12 +1004,98 @@ app.get('/api/admin/subscription-details', requireAdmin, async (req, res) => {
         res.status(500).json({ error: error.message });
     }
 });
+app.get('/api/products', requireAuth, async (req, res) => {
+    try {
+        const userId = req.user.userId;
+        
+        const { data: products, error } = await supabase
+            .from('products')
+            .select('*')
+            .eq('user_id', userId)
+            .order('created_at', { ascending: false });
+
+        if (error) throw error;
+        res.json(products || []);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+app.post('/api/products', requireAuth, async (req, res) => {
+    try {
+        const userId = req.user.userId;
+        const { name, price, stock, category, description } = req.body;
+        
+        const { data: product, error } = await supabase
+            .from('products')
+            .insert([
+                {
+                    user_id: userId,
+                    name,
+                    price,
+                    stock,
+                    category,
+                    description,
+                    created_at: new Date().toISOString()
+                }
+            ])
+            .select();
+
+        if (error) throw error;
+        res.json({ success: true, product: product[0] });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+app.get('/api/sales', requireAuth, async (req, res) => {
+    try {
+        const userId = req.user.userId;
+        
+        const { data: sales, error } = await supabase
+            .from('sales')
+            .select(`
+                *,
+                products (name, price)
+            `)
+            .eq('user_id', userId)
+            .order('created_at', { ascending: false });
+
+        if (error) throw error;
+        res.json(sales || []);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
 app.get('/api/health', (req, res) => {
     res.json({
         status: 'OK',
         server: 'active',
         timestamp: new Date().toISOString()
     });
+});
+app.post('/api/sales', requireAuth, async (req, res) => {
+    try {
+        const userId = req.user.userId;
+        const { product_id, quantity, total_amount } = req.body;
+        
+        const { data: sale, error } = await supabase
+            .from('sales')
+            .insert([
+                {
+                    user_id: userId,
+                    product_id,
+                    quantity,
+                    total_amount,
+                    sale_date: new Date().toISOString(),
+                    created_at: new Date().toISOString()
+                }
+            ])
+            .select();
+
+        if (error) throw error;
+        res.json({ success: true, sale: sale[0] });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
 });
 
 app.get('/', (req, res) => {
