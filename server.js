@@ -956,7 +956,7 @@ app.put('/api/products/:id', requireAuth, async (req, res) => {
     try {
         const userId = req.user.userId;
         const productId = req.params.id;
-        const { name, price, category, purchase_price, image_url } = req.body;
+        const { name, price, category, purchase_price, image_url, stock } = req.body; 
         
         const { data: product, error } = await supabase
             .from('products')
@@ -965,7 +965,8 @@ app.put('/api/products/:id', requireAuth, async (req, res) => {
                 price,
                 category,
                 purchase_price: purchase_price || null,
-                image_url: image_url || null
+                image_url: image_url || null,
+                stock: stock || 0 
             })
             .eq('id', productId)
             .eq('user_id', userId)
