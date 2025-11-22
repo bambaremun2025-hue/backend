@@ -950,6 +950,37 @@ app.post('/api/products', requireAuth, async (req, res) => {
         res.status(500).json({ error: error.message });
     }
 });
+app.put('/api/products/:id', requireAuth, async (req, res) => {
+    try {
+        const userId = req.user.userId;
+        const productId = req.params.id;
+        const { name, price, category, purchase_price, image_url } = req.body;
+        
+        const { data: product, error } = await supabase
+            .from('products')
+            .update({
+                name,
+                price,
+                category,
+                purchase_price: purchase_price || null,
+                image_url: image_url || null,
+                updated_at: new Date().toISOString()
+            })
+            .eq('id', productId)
+            .eq('user_id', userId)
+            .select();
+
+        if (error) throw error;
+        
+        if (!product || product.length === 0) {
+            return res.status(404).json({ error: 'Produit non trouvé' });
+        }
+
+        res.json({ success: true, product: product[0] });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
 
 app.get('/api/sales', requireAuth, async (req, res) => {
     try {
