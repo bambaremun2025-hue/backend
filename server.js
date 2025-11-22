@@ -929,7 +929,7 @@ app.get('/api/products', requireAuth, async (req, res) => {
 app.post('/api/products', requireAuth, async (req, res) => {
     try {
         const userId = req.user.userId;
-        const { name, price, category, purchase_price } = req.body;
+        const { name, price, category, purchase_price, stock } = req.body; 
         
         const { data: product, error } = await supabase
             .from('products')
@@ -940,6 +940,7 @@ app.post('/api/products', requireAuth, async (req, res) => {
                     price,
                     category,
                     purchase_price: purchase_price || null,
+                    stock: stock || 0, 
                     created_at: new Date().toISOString()
                 }
             ])
