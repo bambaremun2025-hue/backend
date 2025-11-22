@@ -1031,35 +1031,55 @@ app.post('/api/sales', requireAuth, async (req, res) => {
 app.post('/api/products/upload', requireAuth, async (req, res) => {
     try {
         const userId = req.user.userId;
-        const { imageBase64, productId } = req.body;
+        const { imageBase64, productId, fileName } = req.body;
 
-        const buffer = Buffer.from(imageBase64.split(',')[1], 'base64');
-        
-        const { data, error } = await supabase.storage
+        if (!imageBase64 || !imageBase64.includes('base64,')) {
+            return res.status(400).json({ error: 'Format image invalide' });
+        }
+
+        const base64Data = imageBase64.split(',')[1];
+        const buffer = Buffer.from(base64Data, 'base64');
+
+        const uniqueFileName = `${userId}/${productId}-${Date.now()}.jpg`;
+
+        const { data, error: uploadError } = await supabase.storage
             .from('product-images')
-            .upload(`${userId}/${productId}-${Date.now()}.jpg`, buffer, {
+            .upload(uniqueFileName, buffer, {
                 contentType: 'image/jpeg',
                 upsert: true
             });
 
-        if (error) throw error;
+        if (uploadError) {
+            return res.status(500).json({ error: 'Erreur upload: ' + uploadError.message });
+        }
 
         const { data: { publicUrl } } = supabase.storage
             .from('product-images')
-            .getPublicUrl(data.path);
+            .getPublicUrl(uniqueFileName);
+
+        console.log('📸 UPLOAD START - Product:', productId, 'User:', userId);
+        console.log('🔗 URL Generated:', publicUrl);
 
         const { error: updateError } = await supabase
             .from('products')
             .update({ image_url: publicUrl })
-            .select()
             .eq('id', productId)
             .eq('user_id', userId);
 
-        if (updateError) throw updateError;
+        console.log('💾 DB Update Error:', updateError);
 
-        res.json({ success: true, imageUrl: publicUrl });
+        if (updateError) {
+            return res.status(500).json({ error: 'Erreur mise à jour produit: ' + updateError.message });
+        }
+
+        res.json({ 
+            success: true, 
+            imageUrl: publicUrl,
+            message: 'Photo sauvegardée avec succès'
+        });
+
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        res.status(500).json({ error: 'Erreur serveur: ' + error.message });
     }
 });
 
