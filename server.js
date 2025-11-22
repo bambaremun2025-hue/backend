@@ -29,6 +29,39 @@ app.use(cors({
     allowedHeaders: ['Content-Type', 'Authorization', 'Origin', 'Accept', 'X-Requested-With']
 }));
 
+const requireAuth = async (req, res, next) => {
+    const authHeader = req.headers.authorization;
+    
+    if (!authHeader) {
+        return res.status(401).json({ error: 'Token manquant' });
+    }
+    
+    const token = authHeader.split(' ')[1];
+    
+    try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET || 'default-secret');
+
+        const { data: user, error } = await supabase
+            .from('users')
+            .select('role')
+            .eq('id', decoded.userId)
+            .single();
+
+        if (error || !user) {
+            return res.status(403).json({ error: 'Utilisateur non trouvé' });
+        }
+
+        if (user.role !== 'admin' && user.role !== 'user') {
+            return res.status(403).json({ error: 'Rôle non autorisé' });
+        }
+        
+        req.user = decoded;
+        next();
+    } catch (error) {
+        return res.status(403).json({ error: 'Token invalide' });
+    }
+};
+
 const requireAdmin = async (req, res, next) => {
     const authHeader = req.headers.authorization;
     
@@ -879,7 +912,7 @@ app.get('/api/admin/subscription-details', requireAdmin, async (req, res) => {
     }
 });
 
-app.get('/api/products', requireAdmin, async (req, res) => {
+app.get('/api/products', requireAuth, async (req, res) => {
   const userId = req.user.userId; 
   
   const { data: products, error } = await supabase
@@ -892,7 +925,7 @@ app.get('/api/products', requireAdmin, async (req, res) => {
   res.json(products || []);
 });
 
-app.post('/api/products', requireAdmin, async (req, res) => {
+app.post('/api/products', requireAuth, async (req, res) => {
     try {
         const userId = req.user.userId;
         const { name, price, category, purchase_price } = req.body;
@@ -918,7 +951,7 @@ app.post('/api/products', requireAdmin, async (req, res) => {
     }
 });
 
-app.get('/api/sales', requireAdmin, async (req, res) => {
+app.get('/api/sales', requireAuth, async (req, res) => {
     try {
         const userId = req.user.userId;
         
@@ -937,8 +970,8 @@ app.get('/api/sales', requireAdmin, async (req, res) => {
         res.status(500).json({ error: error.message });
     }
 });
-;
-app.post('/api/sales', requireAdmin, async (req, res) => {
+
+app.post('/api/sales', requireAuth, async (req, res) => {
     try {
         const userId = req.user.userId;
         const { product_id, quantity, total_amount } = req.body;
@@ -963,7 +996,8 @@ app.post('/api/sales', requireAdmin, async (req, res) => {
         res.status(500).json({ error: error.message });
     }
 });
-app.post('/api/products/upload', requireAdmin, async (req, res) => {
+
+app.post('/api/products/upload', requireAuth, async (req, res) => {
     try {
         const userId = req.user.userId;
         const { imageBase64, productId } = req.body;
@@ -998,7 +1032,7 @@ app.post('/api/products/upload', requireAdmin, async (req, res) => {
     }
 });
 
-app.get('/api/products/images', requireAdmin, async (req, res) => {
+app.get('/api/products/images', requireAuth, async (req, res) => {
     try {
         const userId = req.user.userId;
         
@@ -1012,28 +1046,20 @@ app.get('/api/products/images', requireAdmin, async (req, res) => {
         res.status(500).json({ error: error.message });
     }
 });
-app.get('/api/debug/sync', requireAdmin, async (req, res) => {
+
+app.get('/api/debug/sync', requireAuth, async (req, res) => {
     try {
         const userId = req.user.userId;
         
-        console.log('🔍 DEBUG SYNC - UserId:', userId);
-        console.log('🔍 DEBUG SYNC - Token User:', req.user);
-
         const { data: products, error: productsError } = await supabase
             .from('products')
             .select('*')
             .eq('user_id', userId);
 
-        console.log('🔍 DEBUG SYNC - Products Error:', productsError);
-        console.log('🔍 DEBUG SYNC - Products Data:', products);
-
         const { data: sales, error: salesError } = await supabase
             .from('sales')
             .select('*')
             .eq('user_id', userId);
-
-        console.log('🔍 DEBUG SYNC - Sales Error:', salesError);
-        console.log('🔍 DEBUG SYNC - Sales Data:', sales);
 
         const { data: user, error: userError } = await supabase
             .from('users')
@@ -1061,13 +1087,13 @@ app.get('/api/debug/sync', requireAdmin, async (req, res) => {
         });
 
     } catch (error) {
-        console.error('🔍 DEBUG SYNC - Error:', error);
         res.status(500).json({ 
             success: false,
             error: error.message 
         });
     }
 });
+
 app.get('/api/health', (req, res) => {
     res.json({
         status: 'OK',
