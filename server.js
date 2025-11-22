@@ -963,8 +963,7 @@ app.put('/api/products/:id', requireAuth, async (req, res) => {
                 price,
                 category,
                 purchase_price: purchase_price || null,
-                image_url: image_url || null,
-                updated_at: new Date().toISOString()
+                image_url: image_url || null
             })
             .eq('id', productId)
             .eq('user_id', userId)
