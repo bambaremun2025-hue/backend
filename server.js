@@ -880,20 +880,16 @@ app.get('/api/admin/subscription-details', requireAdmin, async (req, res) => {
 });
 
 app.get('/api/products', requireAdmin, async (req, res) => {
-    try {
-        const userId = req.user.userId;
-        
-        const { data: products, error } = await supabase
-            .from('products')
-            .select('*')
-            .eq('user_id', userId)  
-            .order('created_at', { ascending: false });
+  const userId = req.user.userId; 
+  
+  const { data: products, error } = await supabase
+    .from('products')
+    .select('*')
+    .eq('user_id', userId)  
+    .order('created_at', { ascending: false });
 
-        if (error) throw error;
-        res.json(products || []);
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
+  if (error) throw error;
+  res.json(products || []);
 });
 
 app.post('/api/products', requireAdmin, async (req, res) => {
