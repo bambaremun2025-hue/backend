@@ -1092,7 +1092,6 @@ app.post('/api/sales', requireAuth, async (req, res) => {
         res.status(500).json({ error: error.message });
     }
 });
-
 app.post('/api/products/upload', requireAuth, async (req, res) => {
     try {
         const userId = req.user.userId;
