@@ -1031,8 +1031,10 @@ app.post('/api/sales', requireAuth, async (req, res) => {
 app.post('/api/products/upload', requireAuth, async (req, res) => {
     try {
         const userId = req.user.userId;
-        const { imageBase64, productId, fileName } = req.body;
+        const { imageBase64, productId } = req.body; 
 
+        console.log('📸 UPLOAD - Taille image:', imageBase64?.length);
+        
         if (!imageBase64 || !imageBase64.includes('base64,')) {
             return res.status(400).json({ error: 'Format image invalide' });
         }
