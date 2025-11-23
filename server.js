@@ -1019,18 +1019,27 @@ app.put('/api/products/:id', requireAuth, async (req, res) => {
     try {
         const userId = req.user.userId;
         const productId = req.params.id;
-        const { name, price, category, purchase_price, image_url, stock } = req.body; 
+        const { name, price, category, purchase_price, image_url, stock } = req.body;
         
+        const updateData = {
+            name,
+            price,
+            category,
+            stock: stock || 0,
+            updated_at: new Date().toISOString()
+        };
+
+        if (purchase_price !== undefined) {
+            updateData.purchase_price = purchase_price;
+        }
+        
+        if (image_url !== undefined) {
+            updateData.image_url = image_url;
+        }
+
         const { data: product, error } = await supabase
             .from('products')
-            .update({
-                name,
-                price,
-                category,
-                purchase_price: purchase_price || null,
-                image_url: image_url || null,
-                stock: stock || 0 
-            })
+            .update(updateData)
             .eq('id', productId)
             .eq('user_id', userId)
             .select();
@@ -1072,22 +1081,55 @@ app.post('/api/sales', requireAuth, async (req, res) => {
         const userId = req.user.userId;
         const { product_id, quantity, total_amount } = req.body;
         
-        const { data: sale, error } = await supabase
+        const { data: product, error: productError } = await supabase
+            .from('products')
+            .select('stock, name')
+            .eq('id', product_id)
+            .eq('user_id', userId)
+            .single();
+
+        if (productError || !product) {
+            return res.status(404).json({ error: 'Produit non trouvé' });
+        }
+
+        if (product.stock < quantity) {
+            return res.status(400).json({ 
+                error: `Stock insuffisant. Il reste ${product.stock} unités` 
+            });
+        }
+
+        const { data: sale, error: saleError } = await supabase
             .from('sales')
-            .insert([
-                {
-                    user_id: userId,
-                    product_id,
-                    quantity,
-                    total_amount,
-                    sale_date: new Date().toISOString(),
-                    created_at: new Date().toISOString()
-                }
-            ])
+            .insert([{
+                user_id: userId,
+                product_id,
+                quantity,
+                total_amount,
+                sale_date: new Date().toISOString(),
+                created_at: new Date().toISOString()
+            }])
             .select();
 
-        if (error) throw error;
-        res.json({ success: true, sale: sale[0] });
+        if (saleError) throw saleError;
+
+        const newStock = product.stock - quantity;
+        const { error: updateError } = await supabase
+            .from('products')
+            .update({ 
+                stock: newStock,
+                updated_at: new Date().toISOString()
+            })
+            .eq('id', product_id)
+            .eq('user_id', userId);
+
+        if (updateError) throw updateError;
+
+        res.json({ 
+            success: true, 
+            sale: sale[0],
+            new_stock: newStock
+        });
+
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
@@ -1208,6 +1250,34 @@ app.get('/api/debug/sync', requireAuth, async (req, res) => {
             success: false,
             error: error.message 
         });
+    }
+});
+app.get('/api/debug/storage', requireAuth, async (req, res) => {
+    try {
+        const userId = req.user.userId;
+        
+        const { data: files, error } = await supabase.storage
+            .from('product-images')
+            .list(`${userId}/`, {
+                limit: 100,
+                offset: 0
+            });
+
+        if (error) {
+            return res.status(500).json({ 
+                error: 'Erreur bucket: ' + error.message
+            });
+        }
+
+        res.json({
+            bucket_status: 'OK',
+            files_count: files?.length || 0,
+            files: files,
+            user_folder: `${userId}/`
+        });
+
+    } catch (error) {
+        res.status(500).json({ error: error.message });
     }
 });
 
