@@ -1137,7 +1137,7 @@ app.post('/api/sales', requireAuth, async (req, res) => {
 app.post('/api/products/upload', requireAuth, async (req, res) => {
     try {
         const userId = req.user.userId;
-        const { imageBase64, productId } = req.body; 
+        const { imageBase64, productId } = req.body;
 
         console.log('📸 UPLOAD - Taille image:', imageBase64?.length);
         
@@ -1150,7 +1150,9 @@ app.post('/api/products/upload', requireAuth, async (req, res) => {
 
         const uniqueFileName = `${userId}/${productId}-${Date.now()}.jpg`;
 
-        const { data, error: uploadError } = await supabase.storage
+        const supabaseAdmin = createClient(supabaseUrl, process.env.SUPABASE_SERVICE_ROLE_KEY || supabaseAnonKey);
+        
+        const { data, error: uploadError } = await supabaseAdmin.storage
             .from('product-images')
             .upload(uniqueFileName, buffer, {
                 contentType: 'image/jpeg',
@@ -1161,20 +1163,17 @@ app.post('/api/products/upload', requireAuth, async (req, res) => {
             return res.status(500).json({ error: 'Erreur upload: ' + uploadError.message });
         }
 
-        const { data: { publicUrl } } = supabase.storage
+        const { data: { publicUrl } } = supabaseAdmin.storage
             .from('product-images')
             .getPublicUrl(uniqueFileName);
 
-        console.log('📸 UPLOAD START - Product:', productId, 'User:', userId);
-        console.log('🔗 URL Generated:', publicUrl);
+        console.log('📸 UPLOAD SUCCESS - URL:', publicUrl);
 
-        const { error: updateError } = await supabase
+        const { error: updateError } = await supabaseAdmin
             .from('products')
             .update({ image_url: publicUrl })
             .eq('id', productId)
             .eq('user_id', userId);
-
-        console.log('💾 DB Update Error:', updateError);
 
         if (updateError) {
             return res.status(500).json({ error: 'Erreur mise à jour produit: ' + updateError.message });
