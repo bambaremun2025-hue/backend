@@ -922,7 +922,7 @@ app.get('/api/public/shop/:user_id', async (req, res) => {
       .from('products')
       .select('*')
       .eq('user_id', user_id)
-      .gt('stock', 0) 
+      .gt('stock', 0)  
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -932,14 +932,19 @@ app.get('/api/public/shop/:user_id', async (req, res) => {
 
     console.log(`✅ ${products?.length || 0} produits trouvés`);
     
-    res.json(products || []);
+    const transformedProducts = products?.map(product => ({
+      ...product,
+      selling_price: product.price,
+      stock_quantity: product.stock  
+    })) || [];
+
+    res.json(transformedProducts);
 
   } catch (error) {
     console.error('💥 Erreur serveur:', error);
     res.status(500).json({ error: 'Erreur interne du serveur' });
   }
 });
-
 app.get('/api/products', requireAuth, async (req, res) => {
   const userId = req.user.userId; 
   
