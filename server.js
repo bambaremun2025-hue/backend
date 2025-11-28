@@ -1811,9 +1811,9 @@ app.post('/api/online-orders', async (req, res) => {
       items 
     } = req.body;
 
-    if (!customer_first_name || !customer_last_name || !customer_phone || !delivery_address) {
+    if (!customer_first_name || !customer_last_name || !customer_phone || !delivery_address || !delivery_city) {
       return res.status(400).json({ 
-        error: 'Nom, prénom, téléphone et adresse sont obligatoires' 
+        error: 'Nom, prénom, téléphone, adresse et ville obligatoires'
       });
     }
 
@@ -1834,7 +1834,7 @@ app.post('/api/online-orders', async (req, res) => {
 
       if (product.stock < item.quantity) {
         return res.status(400).json({ 
-          error: `Stock insuffisant pour ${product.name}. Il reste ${product.stock} unités` 
+          error: `Stock insuffisant pour ${product.name}. Reste: ${product.stock}` 
         });
       }
 
@@ -1861,13 +1861,13 @@ app.post('/api/online-orders', async (req, res) => {
         customer_whatsapp: customer_whatsapp || customer_phone,
         delivery_address,
         delivery_city,
-        delivery_zipcode,
+        delivery_zipcode: delivery_zipcode || '',
         delivery_country: delivery_country || 'Sénégal',
         payment_method: payment_method || 'whatsapp',
         payment_status: 'pending',
         total_amount: totalAmount,
         items: orderItems,
-        notes,
+        notes: notes || '',
         status: 'pending'
       }])
       .select();
