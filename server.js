@@ -1696,6 +1696,53 @@ app.get('/api/online-orders', requireAuth, async (req, res) => {
   }
 });
 
+app.get('/api/sales/combined-stats', requireAuth, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+
+    const { data: physicalSales, error: physicalError } = await supabase
+      .from('sales')
+      .select('total_amount, profit, sale_type')
+      .eq('user_id', userId)
+      .eq('sale_type', 'physical');
+
+    const { data: onlineSales, error: onlineError } = await supabase
+      .from('sales')
+      .select('total_amount, profit, sale_type')
+      .eq('user_id', userId)
+      .eq('sale_type', 'online');
+
+    if (physicalError || onlineError) {
+      throw physicalError || onlineError;
+    }
+
+    const physicalTotal = physicalSales.reduce((sum, sale) => sum + parseFloat(sale.total_amount), 0);
+    const onlineTotal = onlineSales.reduce((sum, sale) => sum + parseFloat(sale.total_amount), 0);
+    const physicalProfit = physicalSales.reduce((sum, sale) => sum + (parseFloat(sale.profit) || 0), 0);
+    const onlineProfit = onlineSales.reduce((sum, sale) => sum + (parseFloat(sale.profit) || 0), 0);
+
+    res.json({
+      total_revenue: physicalTotal + onlineTotal,
+      total_profit: physicalProfit + onlineProfit,
+      breakdown: {
+        physical: {
+          revenue: physicalTotal,
+          profit: physicalProfit,
+          count: physicalSales.length
+        },
+        online: {
+          revenue: onlineTotal,
+          profit: onlineProfit,
+          count: onlineSales.length
+        }
+      }
+    });
+
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`Serveur demarre sur le port ${PORT}`);
 });
