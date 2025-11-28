@@ -1047,6 +1047,89 @@ app.post('/api/products/with-image', requireAuth, async (req, res) => {
         res.status(500).json({ error: error.message });
     }
 });
+app.post('/api/products/upload', requireAuth, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const { imageBase64, productId, fileName, mimeType } = req.body;
+
+    if (!imageBase64) {
+      return res.status(400).json({ error: 'Données image manquantes' });
+    }
+
+    if (!productId) {
+      return res.status(400).json({ error: 'ID produit manquant' });
+    }
+
+    let base64Data = imageBase64;
+    
+    if (imageBase64.includes('base64,')) {
+      base64Data = imageBase64.split(',')[1];
+    }
+
+    if (!base64Data) {
+      return res.status(400).json({ error: 'Format base64 invalide' });
+    }
+
+    let buffer;
+    try {
+      buffer = Buffer.from(base64Data, 'base64');
+    } catch (bufferError) {
+      return res.status(400).json({ error: 'Données base64 corrompues' });
+    }
+
+    if (buffer.length === 0) {
+      return res.status(400).json({ error: 'Buffer image vide' });
+    }
+
+    const supabaseAdmin = createClient(supabaseUrl, process.env.SUPABASE_SERVICE_ROLE_KEY || supabaseAnonKey);
+    
+    const fileExtension = mimeType === 'image/png' ? 'png' : 'jpg';
+    const uniqueFileName = `products/${userId}/${productId}.${fileExtension}`;
+
+    const { data: uploadData, error: uploadError } = await supabaseAdmin.storage
+      .from('product-images')
+      .upload(uniqueFileName, buffer, {
+        contentType: mimeType || 'image/jpeg',
+        upsert: true
+      });
+
+    if (uploadError) {
+      return res.status(500).json({ 
+        error: 'Erreur upload storage: ' + uploadError.message 
+      });
+    }
+
+    const { data: { publicUrl } } = supabaseAdmin.storage
+      .from('product-images')
+      .getPublicUrl(uniqueFileName);
+
+    const { error: updateError } = await supabaseAdmin
+      .from('products')
+      .update({ 
+        image_url: publicUrl,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', productId)
+      .eq('user_id', userId);
+
+    if (updateError) {
+      return res.status(500).json({ 
+        error: 'Erreur mise à jour produit: ' + updateError.message 
+      });
+    }
+
+    res.json({ 
+      success: true, 
+      imageUrl: publicUrl,
+      message: 'Image sauvegardée avec succès'
+    });
+
+  } catch (error) {
+    res.status(500).json({ 
+      error: 'Erreur serveur: ' + error.message
+    });
+  }
+});
 app.put('/api/products/:id', requireAuth, async (req, res) => {
     try {
         const userId = req.user.userId;
