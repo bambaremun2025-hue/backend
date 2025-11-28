@@ -1743,6 +1743,234 @@ app.get('/api/sales/combined-stats', requireAuth, async (req, res) => {
   }
 });
 
+app.post('/api/init-payment-settings', requireAuth, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    
+    const { data: settings, error } = await supabase
+      .from('user_payment_settings')
+      .insert([
+        {
+          user_id: userId,
+          has_naboopay: false,
+          orange_money_available: false,
+          wave_available: false
+        }
+      ])
+      .select();
+
+    if (error && !error.message.includes('duplicate key')) {
+      throw error;
+    }
+
+    res.json({
+      success: true,
+      message: 'Paramètres de paiement initialisés'
+    });
+
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/user/payment-settings', requireAuth, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+
+    const { data: settings, error } = await supabase
+      .from('user_payment_settings')
+      .select('*')
+      .eq('user_id', userId)
+      .single();
+
+    res.json(settings || {
+      has_naboopay: false,
+      orange_money_available: false,
+      wave_available: false
+    });
+
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/online-orders', async (req, res) => {
+  try {
+    const { 
+      user_id, 
+      customer_first_name, 
+      customer_last_name, 
+      customer_phone, 
+      customer_whatsapp,
+      delivery_address,
+      delivery_city, 
+      delivery_zipcode,
+      delivery_country,
+      payment_method,
+      notes,
+      items 
+    } = req.body;
+
+    if (!customer_first_name || !customer_last_name || !customer_phone || !delivery_address) {
+      return res.status(400).json({ 
+        error: 'Nom, prénom, téléphone et adresse sont obligatoires' 
+      });
+    }
+
+    let totalAmount = 0;
+    const orderItems = [];
+
+    for (const item of items) {
+      const { data: product, error: productError } = await supabase
+        .from('products')
+        .select('*')
+        .eq('id', item.product_id)
+        .eq('user_id', user_id)
+        .single();
+
+      if (productError || !product) {
+        return res.status(404).json({ error: `Produit non trouvé: ${item.product_id}` });
+      }
+
+      if (product.stock < item.quantity) {
+        return res.status(400).json({ 
+          error: `Stock insuffisant pour ${product.name}. Il reste ${product.stock} unités` 
+        });
+      }
+
+      const itemTotal = product.price * item.quantity;
+      totalAmount += itemTotal;
+
+      orderItems.push({
+        product_id: item.product_id,
+        product_name: product.name,
+        quantity: item.quantity,
+        unit_price: product.price,
+        total_price: itemTotal,
+        purchase_price: product.purchase_price || 0
+      });
+    }
+
+    const { data: order, error: orderError } = await supabase
+      .from('online_orders')
+      .insert([{
+        user_id,
+        customer_first_name,
+        customer_last_name,
+        customer_phone,
+        customer_whatsapp: customer_whatsapp || customer_phone,
+        delivery_address,
+        delivery_city,
+        delivery_zipcode,
+        delivery_country: delivery_country || 'Sénégal',
+        payment_method: payment_method || 'whatsapp',
+        payment_status: 'pending',
+        total_amount: totalAmount,
+        items: orderItems,
+        notes,
+        status: 'pending'
+      }])
+      .select();
+
+    if (orderError) throw orderError;
+
+    res.json({
+      success: true,
+      order: order[0],
+      message: 'Commande créée avec succès'
+    });
+
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/online-orders/detailed', requireAuth, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+
+    const { data: orders, error } = await supabase
+      .from('online_orders')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+
+    res.json(orders || []);
+
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.put('/api/user/payment-settings', requireAuth, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const { has_naboopay, orange_money_available, wave_available, naboopay_merchant_id } = req.body;
+
+    const { data: settings, error } = await supabase
+      .from('user_payment_settings')
+      .upsert([
+        {
+          user_id: userId,
+          has_naboopay: has_naboopay || false,
+          orange_money_available: orange_money_available || false,
+          wave_available: wave_available || false,
+          naboopay_merchant_id: naboopay_merchant_id || null,
+          updated_at: new Date().toISOString()
+        }
+      ])
+      .select();
+
+    if (error) throw error;
+
+    res.json({
+      success: true,
+      settings: settings[0],
+      message: 'Paramètres de paiement mis à jour'
+    });
+
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/online-orders/:orderId/whatsapp', async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    const { user_id } = req.body;
+
+    const { data: order, error } = await supabase
+      .from('online_orders')
+      .select('*')
+      .eq('id', orderId)
+      .eq('user_id', user_id)
+      .single();
+
+    if (error || !order) {
+      return res.status(404).json({ error: 'Commande non trouvée' });
+    }
+
+    const itemsText = order.items.map(item => 
+      `• ${item.product_name} - ${item.quantity}x ${item.unit_price}€ = ${item.total_price}€`
+    ).join('\n');
+
+    const message = `NOUVELLE COMMANDE #${orderId}\n\n👤 Client: ${order.customer_first_name} ${order.customer_last_name}\n📞 Téléphone: ${order.customer_phone}\n📍 Adresse: ${order.delivery_address}, ${order.delivery_city} ${order.delivery_zipcode}\n💳 Paiement: ${order.payment_method}\n\n🛒 PRODUITS:\n${itemsText}\n\n💰 TOTAL: ${order.total_amount}€\n\n📝 Notes: ${order.notes || 'Aucune'}`;
+
+    const whatsappUrl = `https://wa.me/${order.customer_whatsapp}?text=${encodeURIComponent(message)}`;
+
+    res.json({
+      success: true,
+      whatsapp_url: whatsappUrl,
+      message: 'Lien WhatsApp généré'
+    });
+
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`Serveur demarre sur le port ${PORT}`);
 });
