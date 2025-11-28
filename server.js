@@ -1214,6 +1214,49 @@ app.post('/api/fix-images', requireAuth, async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
+app.post('/api/fix-all-images', requireAuth, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    
+    const { data: products, error } = await supabase
+      .from('products')
+      .select('*')
+      .eq('user_id', userId);
+
+    if (error) throw error;
+
+    let fixedCount = 0;
+    const supabaseAdmin = createClient(supabaseUrl, process.env.SUPABASE_SERVICE_ROLE_KEY || supabaseAnonKey);
+
+    for (const product of products) {
+      if (product.image_url) {
+        let newImageUrl = product.image_url;
+        
+        if (product.image_url.startsWith('products/')) {
+          newImageUrl = `https://meaczpmwhfponrjdxmmi.supabase.co/storage/v1/object/public/product-images/${product.image_url}`;
+        }
+        
+        const { error: updateError } = await supabaseAdmin
+          .from('products')
+          .update({ image_url: newImageUrl })
+          .eq('id', product.id)
+          .eq('user_id', userId);
+
+        if (!updateError) {
+          fixedCount++;
+        }
+      }
+    }
+
+    res.json({
+      success: true,
+      message: `${fixedCount} images réparées sur ${products.length} produits`
+    });
+
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
 
 app.get('/api/sales', requireAuth, async (req, res) => {
     try {
