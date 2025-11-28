@@ -912,6 +912,35 @@ app.get('/api/admin/subscription-details', requireAdmin, async (req, res) => {
         res.status(500).json({ error: error.message });
     }
 });
+app.get('/api/public/shop/:user_id', async (req, res) => {
+  try {
+    const { user_id } = req.params;
+    
+    console.log('🛍️ [PUBLIC SHOP] Chargement produits pour:', user_id);
+
+    const { data: products, error } = await supabase
+      .from('products')
+      .select('*')
+      .eq('user_id', user_id)
+      .eq('active', true)
+      .gt('stock_quantity', 0)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('❌ Erreur Supabase:', error);
+      return res.status(500).json({ error: error.message });
+    }
+
+    console.log(`✅ ${products?.length || 0} produits trouvés`);
+    
+    res.json(products || []);
+
+  } catch (error) {
+    console.error('💥 Erreur serveur:', error);
+    res.status(500).json({ error: 'Erreur interne du serveur' });
+  }
+});
+
 
 app.get('/api/products', requireAuth, async (req, res) => {
   const userId = req.user.userId; 
