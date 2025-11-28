@@ -311,6 +311,39 @@ app.get('/api/user/subscription-status/:userId', async (req, res) => {
     }
 });
 
+app.get('/api/user/my-subscription', requireAuth, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    
+    const { data: user, error } = await supabase
+      .from('users')
+      .select('*')
+      .eq('id', userId)
+      .single();
+
+    if (error || !user) {
+      return res.status(404).json({ error: 'Utilisateur non trouvé' });
+    }
+
+    const now = new Date();
+    const endDate = new Date(user.subscription_type === 'premium' ? user.subscription_end_date : user.trial_ends_at);
+    const daysLeft = Math.ceil((endDate - now) / (1000 * 60 * 60 * 24));
+
+    res.json({
+      success: true,
+      subscription_type: user.subscription_type,
+      subscription_end: user.subscription_type === 'premium' ? user.subscription_end_date : user.trial_ends_at,
+      days_left: daysLeft,
+      is_active: daysLeft > 0,
+      status: daysLeft > 0 ? 'active' : 'expired',
+      message: daysLeft > 0 ? `Abonnement actif - ${daysLeft} jours restants` : 'Abonnement expiré'
+    });
+
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.post('/api/invoices/generate', async (req, res) => {
     try {
         const { user_id, amount, description, payment_method } = req.body;
