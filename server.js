@@ -1530,6 +1530,172 @@ app.get('/', (req, res) => {
     });
 });
 
+app.post('/api/online-orders', async (req, res) => {
+  try {
+    const { user_id, customer_name, customer_phone, customer_whatsapp, items } = req.body;
+
+    let totalAmount = 0;
+    const orderItems = [];
+
+    for (const item of items) {
+      const { data: product, error: productError } = await supabase
+        .from('products')
+        .select('*')
+        .eq('id', item.product_id)
+        .eq('user_id', user_id)
+        .single();
+
+      if (productError || !product) {
+        return res.status(404).json({ error: `Produit non trouvé: ${item.product_id}` });
+      }
+
+      if (product.stock < item.quantity) {
+        return res.status(400).json({ 
+          error: `Stock insuffisant pour ${product.name}. Il reste ${product.stock} unités` 
+        });
+      }
+
+      const itemTotal = product.price * item.quantity;
+      totalAmount += itemTotal;
+
+      orderItems.push({
+        product_id: item.product_id,
+        product_name: product.name,
+        quantity: item.quantity,
+        unit_price: product.price,
+        total_price: itemTotal,
+        purchase_price: product.purchase_price || 0
+      });
+    }
+
+    const { data: order, error: orderError } = await supabase
+      .from('online_orders')
+      .insert([{
+        user_id,
+        customer_name,
+        customer_phone,
+        customer_whatsapp: customer_whatsapp || customer_phone,
+        total_amount: totalAmount,
+        items: orderItems,
+        status: 'pending'
+      }])
+      .select();
+
+    if (orderError) throw orderError;
+
+    res.json({
+      success: true,
+      order: order[0],
+      message: 'Commande créée avec succès'
+    });
+
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/online-orders/:orderId/confirm', requireAuth, async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    const userId = req.user.userId;
+
+    const { data: order, error: orderError } = await supabase
+      .from('online_orders')
+      .select('*')
+      .eq('id', orderId)
+      .eq('user_id', userId)
+      .single();
+
+    if (orderError || !order) {
+      return res.status(404).json({ error: 'Commande non trouvée' });
+    }
+
+    if (order.status !== 'pending') {
+      return res.status(400).json({ error: 'Commande déjà traitée' });
+    }
+
+    let totalProfit = 0;
+
+    for (const item of order.items) {
+      const { data: product, error: productError } = await supabase
+        .from('products')
+        .select('stock, purchase_price')
+        .eq('id', item.product_id)
+        .eq('user_id', userId)
+        .single();
+
+      if (productError) throw productError;
+
+      const newStock = product.stock - item.quantity;
+      
+      const { error: updateError } = await supabase
+        .from('products')
+        .update({ stock: newStock })
+        .eq('id', item.product_id)
+        .eq('user_id', userId);
+
+      if (updateError) throw updateError;
+
+      const profit = (item.unit_price - (product.purchase_price || 0)) * item.quantity;
+      totalProfit += profit;
+
+      const { error: saleError } = await supabase
+        .from('sales')
+        .insert([{
+          user_id: userId,
+          product_id: item.product_id,
+          quantity: item.quantity,
+          total_amount: item.total_price,
+          profit: profit,
+          sale_type: 'online',
+          online_order_id: orderId,
+          sale_date: new Date().toISOString()
+        }]);
+
+      if (saleError) throw saleError;
+    }
+
+    const { error: statusError } = await supabase
+      .from('online_orders')
+      .update({ 
+        status: 'confirmed',
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', orderId);
+
+    if (statusError) throw statusError;
+
+    res.json({
+      success: true,
+      message: 'Commande confirmée et synchronisée',
+      total_profit: totalProfit,
+      order_id: orderId
+    });
+
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/online-orders', requireAuth, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+
+    const { data: orders, error } = await supabase
+      .from('online_orders')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+
+    res.json(orders || []);
+
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`Serveur demarre sur le port ${PORT}`);
 });
