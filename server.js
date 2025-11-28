@@ -922,7 +922,6 @@ app.get('/api/public/shop/:user_id', async (req, res) => {
       .from('products')
       .select('*')
       .eq('user_id', user_id)
-      .eq('active', true)
       .gt('stock_quantity', 0)
       .order('created_at', { ascending: false });
 
@@ -940,7 +939,6 @@ app.get('/api/public/shop/:user_id', async (req, res) => {
     res.status(500).json({ error: 'Erreur interne du serveur' });
   }
 });
-
 
 app.get('/api/products', requireAuth, async (req, res) => {
   const userId = req.user.userId; 
