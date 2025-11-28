@@ -922,7 +922,7 @@ app.get('/api/public/shop/:user_id', async (req, res) => {
       .from('products')
       .select('*')
       .eq('user_id', user_id)
-      .gt('stock_quantity', 0)
+      .gt('stock', 0) 
       .order('created_at', { ascending: false });
 
     if (error) {
