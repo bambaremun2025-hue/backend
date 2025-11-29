@@ -1946,6 +1946,56 @@ app.put('/api/user/payment-settings', requireAuth, async (req, res) => {
   }
 });
 
+app.put('/api/user/shop-settings', requireAuth, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const { shop_name } = req.body;
+
+    const { data: user, error } = await supabase
+      .from('users')
+      .update({
+        shop_name: shop_name || 'Ma Boutique',
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', userId)
+      .select();
+
+    if (error) throw error;
+
+    res.json({
+      success: true,
+      user: user[0],
+      message: 'Nom de boutique mis à jour'
+    });
+
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/public/shop-name/:user_id', async (req, res) => {
+  try {
+    const { user_id } = req.params;
+
+    const { data: user, error } = await supabase
+      .from('users')
+      .select('shop_name, full_name')
+      .eq('id', user_id)
+      .single();
+
+    if (error) throw error;
+
+    res.json({
+      shop_name: user?.shop_name || 'Ma Boutique',
+      user_name: user?.full_name
+    });
+
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+
 app.post('/api/online-orders/:orderId/whatsapp', async (req, res) => {
   try {
     const { orderId } = req.params;
