@@ -1794,7 +1794,112 @@ app.get('/api/user/payment-settings', requireAuth, async (req, res) => {
   }
 });
 
+app.post('/api/online-orders', async (req, res) => {
+  try {
+    const { 
+      user_id, 
+      customer_first_name, 
+      customer_last_name, 
+      customer_phone, 
+      customer_whatsapp,
+      delivery_address,
+      delivery_city, 
+      delivery_zipcode,
+      delivery_country,
+      payment_method,
+      notes,
+      items 
+    } = req.body;
 
+    console.log('📦 DONNÉES REÇUES:', {
+      customer_first_name,
+      customer_last_name, 
+      delivery_address,
+      delivery_city
+    });
+
+    if (!customer_first_name || !customer_last_name || !customer_phone || !delivery_address || !delivery_city) {
+      return res.status(400).json({ 
+        error: 'Champs manquants'
+      });
+    }
+
+    let totalAmount = 0;
+    const orderItems = [];
+
+    for (const item of items) {
+      const { data: product, error: productError } = await supabase
+        .from('products')
+        .select('*')
+        .eq('id', item.product_id)
+        .eq('user_id', user_id)
+        .single();
+
+      if (productError || !product) {
+        return res.status(404).json({ error: `Produit non trouvé: ${item.product_id}` });
+      }
+
+      if (product.stock < item.quantity) {
+        return res.status(400).json({ 
+          error: `Stock insuffisant pour ${product.name}`
+        });
+      }
+
+      const itemTotal = product.price * item.quantity;
+      totalAmount += itemTotal;
+
+      orderItems.push({
+        product_id: item.product_id,
+        product_name: product.name,
+        quantity: item.quantity,
+        unit_price: product.price,
+        total_price: itemTotal,
+        purchase_price: product.purchase_price || 0
+      });
+    }
+
+    const { data: order, error: orderError } = await supabase
+      .from('online_orders')
+      .insert([{
+        user_id,
+        customer_first_name,
+        customer_last_name,
+        customer_phone,
+        customer_whatsapp: customer_whatsapp || customer_phone,
+        delivery_address,
+        delivery_city,
+        delivery_zipcode: delivery_zipcode || '',
+        delivery_country: delivery_country || 'Sénégal',
+        payment_method: payment_method || 'whatsapp',
+        payment_status: 'pending',
+        total_amount: totalAmount,
+        items: orderItems,
+        notes: notes || '',
+        status: 'pending'
+      }])
+      .select();
+
+    if (orderError) throw orderError;
+
+    console.log('✅ COMMANDE CRÉÉE:', {
+      id: order[0].id,
+      prenom: order[0].customer_first_name,
+      nom: order[0].customer_last_name,
+      adresse: order[0].delivery_address,
+      ville: order[0].delivery_city
+    });
+
+    res.json({
+      success: true,
+      order: order[0],
+      message: 'Commande créée avec succès'
+    });
+
+  } catch (error) {
+    console.error('❌ ERREUR:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
 
 app.get('/api/online-orders/detailed', requireAuth, async (req, res) => {
   try {
