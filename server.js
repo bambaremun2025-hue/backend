@@ -949,7 +949,13 @@ app.get('/api/public/shop/:user_id', async (req, res) => {
   try {
     const { user_id } = req.params;
     
-    console.log('🛍️ [PUBLIC SHOP] Chargement produits pour:', user_id);
+    console.log('🛍️ [PUBLIC SHOP] Chargement boutique pour:', user_id);
+
+    const { data: user, error: userError } = await supabase
+      .from('users')
+      .select('shop_name')
+      .eq('id', user_id)
+      .single();
 
     const { data: products, error } = await supabase
       .from('products')
@@ -971,7 +977,10 @@ app.get('/api/public/shop/:user_id', async (req, res) => {
       stock_quantity: product.stock  
     })) || [];
 
-    res.json(transformedProducts);
+    res.json({
+      shop_name: user?.shop_name || 'Ma Boutique',
+      products: transformedProducts
+    });
 
   } catch (error) {
     console.error('💥 Erreur serveur:', error);
