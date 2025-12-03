@@ -322,7 +322,11 @@ app.get('/api/user/my-subscription', requireAuth, async (req, res) => {
       .single();
 
     if (error || !user) {
-      return res.status(404).json({ error: 'Utilisateur non trouvé' });
+      return res.status(200).json({
+        success: false,
+        is_active: false,
+        status: 'not_found'
+      });
     }
 
     const now = new Date();
@@ -335,12 +339,15 @@ app.get('/api/user/my-subscription', requireAuth, async (req, res) => {
       subscription_end: user.subscription_type === 'premium' ? user.subscription_end_date : user.trial_ends_at,
       days_left: daysLeft,
       is_active: daysLeft > 0,
-      status: daysLeft > 0 ? 'active' : 'expired',
-      message: daysLeft > 0 ? `Abonnement actif - ${daysLeft} jours restants` : 'Abonnement expiré'
+      status: daysLeft > 0 ? 'active' : 'expired'
     });
 
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(200).json({
+      success: false,
+      is_active: false,
+      status: 'error'
+    });
   }
 });
 
