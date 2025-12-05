@@ -1600,11 +1600,12 @@ app.post('/api/online-orders/:orderId/confirm', requireAuth, async (req, res) =>
           total_amount: item.total_price,
           profit: profit,
           sale_type: 'online',
-          online_order_id: orderId,
           sale_date: new Date().toISOString()
         }]);
 
-      if (saleError) throw saleError;
+      if (saleError) {
+        console.error('Erreur insertion vente:', saleError);
+      }
     }
 
     const { error: statusError } = await supabase
@@ -1625,6 +1626,7 @@ app.post('/api/online-orders/:orderId/confirm', requireAuth, async (req, res) =>
     });
 
   } catch (error) {
+    console.error('Erreur confirmation:', error);
     res.status(500).json({ error: error.message });
   }
 });
