@@ -1629,6 +1629,179 @@ app.post('/api/online-orders/:orderId/confirm', requireAuth, async (req, res) =>
   }
 });
 
+app.post('/api/online-orders/:orderId/pay', requireAuth, async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    const userId = req.user.userId;
+
+    const { data: order, error } = await supabase
+      .from('online_orders')
+      .select('*')
+      .eq('id', orderId)
+      .eq('user_id', userId)
+      .single();
+
+    if (error || !order) return res.status(404).json({ error: 'Commande non trouvée' });
+    if (order.status !== 'confirmed') return res.status(400).json({ error: 'Commande non confirmée' });
+
+    const { error: updateError } = await supabase
+      .from('online_orders')
+      .update({ 
+        status: 'paid',
+        payment_status: 'paid',
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', orderId);
+
+    if (updateError) throw updateError;
+
+    res.json({ success: true, message: 'Commande marquée comme payée' });
+
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/online-orders/:orderId/deliver', requireAuth, async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    const userId = req.user.userId;
+
+    const { data: order, error } = await supabase
+      .from('online_orders')
+      .select('*')
+      .eq('id', orderId)
+      .eq('user_id', userId)
+      .single();
+
+    if (error || !order) return res.status(404).json({ error: 'Commande non trouvée' });
+    if (order.status !== 'paid') return res.status(400).json({ error: 'Commande non payée' });
+
+    const { error: updateError } = await supabase
+      .from('online_orders')
+      .update({ 
+        status: 'delivered',
+        delivery_status: 'delivered',
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', orderId);
+
+    if (updateError) throw updateError;
+
+    res.json({ success: true, message: 'Commande marquée comme livrée' });
+
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/sales/combined-stats', requireAuth, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+
+    const { data: physicalSales, error: physicalError } = await supabase
+      .from('sales')
+      .select('total_amount, profit, sale_date')
+      .eq('user_id', userId)
+      .eq('sale_type', 'physical');
+
+    const { data: onlineOrders, error: ordersError } = await supabase
+      .from('online_orders')
+      .select('total_amount, items, status, created_at')
+      .eq('user_id', userId)
+      .in('status', ['confirmed', 'paid', 'delivered']);
+
+    if (physicalError || ordersError) {
+      throw physicalError || ordersError;
+    }
+
+    const physicalRevenue = physicalSales.reduce((sum, sale) => sum + parseFloat(sale.total_amount), 0);
+    const physicalProfit = physicalSales.reduce((sum, sale) => sum + (parseFloat(sale.profit) || 0), 0);
+
+    let onlineRevenue = 0;
+    let onlineProfit = 0;
+    
+    onlineOrders.forEach(order => {
+      onlineRevenue += parseFloat(order.total_amount);
+      
+      order.items.forEach(item => {
+        const profit = (item.unit_price - (item.purchase_price || 0)) * item.quantity;
+        onlineProfit += profit;
+      });
+    });
+
+    const today = new Date().toISOString().split('T')[0];
+    const thisMonth = new Date().getMonth();
+    const thisYear = new Date().getFullYear();
+
+    const statsByPeriod = {
+      today: {
+        physical: physicalSales.filter(s => s.sale_date.startsWith(today)).length,
+        online: onlineOrders.filter(o => o.created_at.startsWith(today)).length
+      },
+      thisMonth: {
+        physical: physicalSales.filter(s => new Date(s.sale_date).getMonth() === thisMonth).length,
+        online: onlineOrders.filter(o => new Date(o.created_at).getMonth() === thisMonth).length
+      },
+      allTime: {
+        physical: physicalSales.length,
+        online: onlineOrders.length
+      }
+    };
+
+    res.json({
+      total_revenue: physicalRevenue + onlineRevenue,
+      total_profit: physicalProfit + onlineProfit,
+      total_orders: physicalSales.length + onlineOrders.length,
+
+      breakdown: {
+        physical: {
+          revenue: physicalRevenue,
+          profit: physicalProfit,
+          count: physicalSales.length,
+          avg_order_value: physicalSales.length > 0 ? physicalRevenue / physicalSales.length : 0
+        },
+        online: {
+          revenue: onlineRevenue,
+          profit: onlineProfit,
+          count: onlineOrders.length,
+          avg_order_value: onlineOrders.length > 0 ? onlineRevenue / onlineOrders.length : 0
+        }
+      },
+
+      comparison: {
+        revenue_ratio: onlineRevenue > 0 ? (physicalRevenue / onlineRevenue).toFixed(2) : 'N/A',
+        profit_margin_physical: physicalRevenue > 0 ? (physicalProfit / physicalRevenue * 100).toFixed(1) : 0,
+        profit_margin_online: onlineRevenue > 0 ? (onlineProfit / onlineRevenue * 100).toFixed(1) : 0
+      },
+
+      period_stats: statsByPeriod,
+
+      trend: {
+        online_growth: calculateGrowth(onlineOrders, 'revenue'),
+        physical_growth: calculateGrowth(physicalSales, 'revenue')
+      }
+    });
+
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+function calculateGrowth(data, metric) {
+  if (data.length < 2) return 0;
+  
+  const recent = data.slice(-30);
+  const previous = data.slice(-60, -30);
+  
+  if (previous.length === 0) return 100;
+  
+  const recentTotal = recent.reduce((sum, item) => sum + parseFloat(item[metric]), 0);
+  const previousTotal = previous.reduce((sum, item) => sum + parseFloat(item[metric]), 0);
+  
+  return previousTotal > 0 ? ((recentTotal - previousTotal) / previousTotal * 100).toFixed(1) : 100;
+}
+
 app.get('/api/online-orders', requireAuth, async (req, res) => {
   try {
     const userId = req.user.userId;
