@@ -2161,7 +2161,6 @@ app.get('/api/public/shop-name/:user_id', async (req, res) => {
   }
 });
 
-
 app.post('/api/online-orders/:orderId/whatsapp', async (req, res) => {
   try {
     const { orderId } = req.params;
@@ -2179,12 +2178,12 @@ app.post('/api/online-orders/:orderId/whatsapp', async (req, res) => {
     }
 
     const itemsText = order.items.map(item => 
-      `• ${item.product_name} - ${item.quantity}x ${item.unit_price}€ = ${item.total_price}€`
+      `• ${item.product_name} - ${item.quantity}x ${item.unit_price}FCFA = ${item.total_price}FCFA`
     ).join('\n');
 
-    const message = `NOUVELLE COMMANDE #${orderId}\n\n👤 Client: ${order.customer_first_name} ${order.customer_last_name}\n📞 Téléphone: ${order.customer_phone}\n📍 Adresse: ${order.delivery_address}, ${order.delivery_city} ${order.delivery_zipcode}\n💳 Paiement: ${order.payment_method}\n\n🛒 PRODUITS:\n${itemsText}\n\n💰 TOTAL: ${order.total_amount}€\n\n📝 Notes: ${order.notes || 'Aucune'}`;
+    const message = `NOUVELLE COMMANDE #${orderId}\n\n👤 Client: ${order.customer_first_name} ${order.customer_last_name}\n📞 Téléphone: ${order.customer_phone}\n📍 Adresse: ${order.delivery_address}, ${order.delivery_city} ${order.delivery_zipcode || ''}\n💳 Paiement: ${order.payment_method}\n\n🛒 PRODUITS:\n${itemsText}\n\n💰 TOTAL: ${order.total_amount}FCFA\n\n📝 Notes: ${order.notes || 'Aucune'}`;
 
-    const whatsappUrl = `https://wa.me/${order.customer_whatsapp}?text=${encodeURIComponent(message)}`;
+    const whatsappUrl = `https://wa.me/${order.customer_whatsapp || order.customer_phone}?text=${encodeURIComponent(message)}`;
 
     res.json({
       success: true,
