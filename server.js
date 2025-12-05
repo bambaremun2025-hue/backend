@@ -1734,16 +1734,15 @@ app.get('/api/sales/combined-stats', requireAuth, async (req, res) => {
 
     const today = new Date().toISOString().split('T')[0];
     const thisMonth = new Date().getMonth();
-    const thisYear = new Date().getFullYear();
 
     const statsByPeriod = {
       today: {
-        physical: physicalSales.filter(s => s.sale_date.startsWith(today)).length,
-        online: onlineOrders.filter(o => o.created_at.startsWith(today)).length
+        physical: physicalSales.filter(s => s.sale_date && s.sale_date.startsWith(today)).length,
+        online: onlineOrders.filter(o => o.created_at && o.created_at.startsWith(today)).length
       },
       thisMonth: {
-        physical: physicalSales.filter(s => new Date(s.sale_date).getMonth() === thisMonth).length,
-        online: onlineOrders.filter(o => new Date(o.created_at).getMonth() === thisMonth).length
+        physical: physicalSales.filter(s => s.sale_date && new Date(s.sale_date).getMonth() === thisMonth).length,
+        online: onlineOrders.filter(o => o.created_at && new Date(o.created_at).getMonth() === thisMonth).length
       },
       allTime: {
         physical: physicalSales.length,
@@ -1780,8 +1779,8 @@ app.get('/api/sales/combined-stats', requireAuth, async (req, res) => {
       period_stats: statsByPeriod,
 
       trend: {
-        online_growth: calculateGrowth(onlineOrders, 'revenue'),
-        physical_growth: calculateGrowth(physicalSales, 'revenue')
+        online_growth: calculateGrowth(onlineOrders, 'total_amount'),
+        physical_growth: calculateGrowth(physicalSales, 'total_amount')
       }
     });
 
@@ -1789,21 +1788,6 @@ app.get('/api/sales/combined-stats', requireAuth, async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
-
-function calculateGrowth(data, metric) {
-  if (data.length < 2) return 0;
-  
-  const recent = data.slice(-30);
-  const previous = data.slice(-60, -30);
-  
-  if (previous.length === 0) return 100;
-  
-  const recentTotal = recent.reduce((sum, item) => sum + parseFloat(item[metric]), 0);
-  const previousTotal = previous.reduce((sum, item) => sum + parseFloat(item[metric]), 0);
-  
-  return previousTotal > 0 ? ((recentTotal - previousTotal) / previousTotal * 100).toFixed(1) : 100;
-}
-
 app.get('/api/online-orders', requireAuth, async (req, res) => {
   try {
     const userId = req.user.userId;
