@@ -192,6 +192,8 @@ app.post('/api/auth/login', async (req, res) => {
   try {
     const { email, password } = req.body;
     
+    console.log('LOGIN - Email:', email);
+
     const { data: user, error: userError } = await supabase
       .from('users')
       .select('*')
@@ -199,38 +201,34 @@ app.post('/api/auth/login', async (req, res) => {
       .single();
 
     if (userError || !user) {
+      console.log('LOGIN - User not found');
       return res.status(401).json({ error: 'Email ou mot de passe incorrect' });
     }
 
-    let validPassword = false;
-    const storedPassword = user.user_password;
+    console.log('LOGIN - User ID:', user.id);
+    console.log('LOGIN - Stored hash:', user.user_password?.substring(0, 30));
 
-    try {
-      validPassword = await bcrypt.compare(password, storedPassword);
-      
-      if (!validPassword) {
-        if (storedPassword && (storedPassword.startsWith('$2a$') || storedPassword.startsWith('$2b$'))) {
-          // C'est déjà un hash bcrypt
-        } else {
-          if (password === storedPassword) {
-            validPassword = true;
-            
-            const hashedPassword = await bcrypt.hash(password, 12);
-            await supabase
-              .from('users')
-              .update({ user_password: hashedPassword })
-              .eq('id', user.id);
-          }
-        }
+    // Test si bcrypt marche
+    const testHash = await bcrypt.hash('test123', 12);
+    const testCompare = await bcrypt.compare('test123', testHash);
+    console.log('LOGIN - bcrypt test works?', testCompare);
+    
+    // Vrai comparaison
+    const realCompare = await bcrypt.compare(password, user.user_password);
+    console.log('LOGIN - Real compare result:', realCompare);
+    
+    let validPassword = realCompare;
+
+    if (!validPassword) {
+      if (password === user.user_password) {
+        validPassword = true;
       }
-    } catch (bcryptError) {
-      console.error('bcrypt error:', bcryptError);
     }
 
     if (!validPassword) {
       return res.status(401).json({ error: 'Email ou mot de passe incorrect' });
     }
-
+    
     const token = jwt.sign(
       { 
         userId: user.id,
@@ -257,6 +255,7 @@ app.post('/api/auth/login', async (req, res) => {
     });
 
   } catch (error) {
+    console.error('LOGIN ERROR:', error);
     res.status(500).json({ error: 'Erreur serveur' });
   }
 });
