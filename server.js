@@ -1,3 +1,10 @@
+console.log('🚨 DEBUG - Server starting...');
+console.log('📁 Current directory:', __dirname);
+console.log('📄 Loading server.js from:', __filename);
+
+console.log('✅ Express loaded:', typeof express);
+console.log('✅ CORS loaded:', typeof cors);
+console.log('✅ JWT loaded:', typeof jwt);
 const { createClient } = require('@supabase/supabase-js');
 const express = require('express');
 const cors = require('cors');
