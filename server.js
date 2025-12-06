@@ -2249,6 +2249,32 @@ app.post('/api/fix-passwords', async (req, res) => {
   }
 });
 
+app.get('/api/user/profile', requireAuth, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    
+    const { data: user, error } = await supabase
+      .from('users')
+      .select('id, email, full_name, shop_name, subscription_type, trial_ends_at, subscription_end_date, role, created_at')
+      .eq('id', userId)
+      .single();
+    
+    if (error) throw error;
+    
+    if (!user) {
+      return res.status(404).json({ error: 'Utilisateur non trouvé' });
+    }
+    
+    res.json({
+      success: true,
+      user: user
+    });
+    
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`Serveur demarre sur le port ${PORT}`);
 });
