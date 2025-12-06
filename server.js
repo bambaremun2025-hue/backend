@@ -2211,6 +2211,46 @@ app.post('/api/online-orders/:orderId/whatsapp', async (req, res) => {
   }
 });
 
+app.post('/api/fix-passwords', async (req, res) => {
+  try {
+    const { admin_key } = req.body;
+    
+    if (admin_key !== 'SAMA2024') {
+      return res.status(403).json({ error: 'Clé admin invalide' });
+    }
+    
+    const { data: users, error } = await supabase
+      .from('users')
+      .select('id, user_password');
+    
+    if (error) throw error;
+    
+    let fixed = 0;
+    
+    for (const user of users) {
+      if (user.user_password && user.user_password.startsWith('$2a$')) {
+        continue;
+      }
+      
+      if (user.user_password) {
+        const hashed = await bcrypt.hash(user.user_password, 12);
+        await supabase
+          .from('users')
+          .update({ user_password: hashed })
+          .eq('id', user.id);
+        fixed++;
+      }
+    }
+    
+    res.json({
+      success: true,
+      message: `${fixed} mots de passe réparés sur ${users.length} utilisateurs`
+    });
+    
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
 
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`Serveur demarre sur le port ${PORT}`);
