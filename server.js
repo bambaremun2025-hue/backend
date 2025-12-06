@@ -200,22 +200,24 @@ app.post('/api/auth/login', async (req, res) => {
       .eq('email', email)
       .single();
 
+    console.log('SUPABASE RESULT:', {
+      userFound: !!user,
+      userId: user?.id,
+      error: userError
+    });
+
     if (userError || !user) {
-      console.log('LOGIN - User not found');
       return res.status(401).json({ error: 'Email ou mot de passe incorrect' });
     }
 
-    console.log('LOGIN - User ID:', user.id);
-    console.log('LOGIN - Stored hash:', user.user_password?.substring(0, 30));
-
-    // Test si bcrypt marche
+    console.log('LOGIN - Hash:', user.user_password?.substring(0, 30));
+    
     const testHash = await bcrypt.hash('test123', 12);
     const testCompare = await bcrypt.compare('test123', testHash);
-    console.log('LOGIN - bcrypt test works?', testCompare);
+    console.log('BCRYPT TEST:', testCompare);
     
-    // Vrai comparaison
     const realCompare = await bcrypt.compare(password, user.user_password);
-    console.log('LOGIN - Real compare result:', realCompare);
+    console.log('REAL COMPARE:', realCompare);
     
     let validPassword = realCompare;
 
@@ -255,7 +257,7 @@ app.post('/api/auth/login', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('LOGIN ERROR:', error);
+    console.error('ERROR:', error);
     res.status(500).json({ error: 'Erreur serveur' });
   }
 });
