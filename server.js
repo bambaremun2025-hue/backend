@@ -189,52 +189,80 @@ app.post('/api/auth/register', async (req, res) => {
 });
 
 app.post('/api/auth/login', async (req, res) => {
-    try {
-        const { email, password } = req.body;
-        
-        const { data: user, error: userError } = await supabase
-            .from('users')
-            .select('*')
-            .eq('email', email)
-            .single();
+  try {
+    const { email, password } = req.body;
+    
+    console.log('LOGIN DEBUG - Email:', email);
+    console.log('LOGIN DEBUG - Password length:', password?.length);
+    
+    const { data: user, error: userError } = await supabase
+      .from('users')
+      .select('*')
+      .eq('email', email)
+      .single();
 
-        if (userError || !user) {
-            return res.status(401).json({ error: 'Email ou mot de passe incorrect' });
-        }
-
-        const validPassword = await bcrypt.compare(password, user.user_password);
-        if (!validPassword) {
-            return res.status(401).json({ error: 'Email ou mot de passe incorrect' });
-        }
-
-        const token = jwt.sign(
-            { 
-                userId: user.id,
-                email: user.email,
-                name: user.full_name,
-                role: user.role  
-            },
-            process.env.JWT_SECRET || 'default-secret',
-            { expiresIn: '24h' }
-        );
-
-        res.json({
-            message: 'Connexion réussie',
-            token: token,
-            user: {
-                id: user.id,
-                email: user.email,
-                name: user.full_name,
-                role: user.role,
-                subscription_type: user.subscription_type,
-                trial_ends_at: user.trial_ends_at,
-                subscription_end_date: user.subscription_end_date
-            }
-        });
-
-    } catch (error) {
-        res.status(500).json({ error: 'Erreur serveur' });
+    if (userError || !user) {
+      console.log('LOGIN ERROR - User not found');
+      return res.status(401).json({ error: 'Email ou mot de passe incorrect' });
     }
+
+    console.log('LOGIN DEBUG - User ID:', user.id);
+    console.log('LOGIN DEBUG - Stored hash:', user.user_password?.substring(0, 30) + '...');
+    
+    let validPassword = false;
+    
+    try {
+      validPassword = await bcrypt.compare(password, user.user_password);
+      console.log('LOGIN DEBUG - bcrypt.compare result:', validPassword);
+    } catch (bcryptError) {
+      console.log('LOGIN ERROR - bcrypt.compare failed:', bcryptError.message);
+      
+      if (password === user.user_password) {
+        console.log('LOGIN DEBUG - Plain text match');
+        validPassword = true;
+        
+        const hashedPassword = await bcrypt.hash(password, 12);
+        await supabase
+          .from('users')
+          .update({ user_password: hashedPassword })
+          .eq('id', user.id);
+      }
+    }
+    
+    if (!validPassword) {
+      console.log('LOGIN ERROR - Invalid password');
+      return res.status(401).json({ error: 'Email ou mot de passe incorrect' });
+    }
+
+    const token = jwt.sign(
+      { 
+        userId: user.id,
+        email: user.email,
+        name: user.full_name,
+        role: user.role  
+      },
+      process.env.JWT_SECRET || 'default-secret',
+      { expiresIn: '24h' }
+    );
+
+    res.json({
+      message: 'Connexion réussie',
+      token: token,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.full_name,
+        role: user.role,
+        subscription_type: user.subscription_type,
+        trial_ends_at: user.trial_ends_at,
+        subscription_end_date: user.subscription_end_date
+      }
+    });
+
+  } catch (error) {
+    console.error('LOGIN ERROR - Server:', error);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
 });
 
 app.get('/api/user/subscription-status/:userId', async (req, res) => {
