@@ -2275,6 +2275,42 @@ app.get('/api/user/profile', requireAuth, async (req, res) => {
   }
 });
 
+app.get('/api/user/subscription-status', requireAuth, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    
+    const { data: user, error } = await supabase
+      .from('users')
+      .select('*')
+      .eq('id', userId)
+      .single();
+
+    if (error || !user) {
+      return res.status(404).json({ error: 'Utilisateur non trouvé' });
+    }
+
+    const now = new Date();
+    const endDate = user.subscription_type === 'premium' 
+      ? new Date(user.subscription_end_date) 
+      : new Date(user.trial_ends_at);
+    
+    const daysLeft = Math.ceil((endDate - now) / (1000 * 60 * 60 * 24));
+
+    res.json({
+      subscription_type: user.subscription_type,
+      subscription_end: user.subscription_type === 'premium' 
+        ? user.subscription_end_date 
+        : user.trial_ends_at,
+      days_left: daysLeft > 0 ? daysLeft : 0,
+      is_active: daysLeft > 0,
+      status: daysLeft > 0 ? 'active' : 'expired'
+    });
+
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`Serveur demarre sur le port ${PORT}`);
 });
