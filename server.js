@@ -12,7 +12,7 @@ console.log('📁 Current directory:', __dirname);
 console.log('📄 Loading server.js from:', __filename);
 
 const supabaseUrl = 'https://meaczpmwhfponrjdxmmi.supabase.co';
-const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1lYWN6cG13aGZwb25yamR4bW1pIiwicm9sZSI6ImFub24iIiwiaWF0IjoxNzYyNTc5MzI2LCJleHAiOjIwNzgxNTUzMjZ9.Gp25mFEAm5L4cKBm5BXsIqmEik81oxkqgc8nqfh9s1s';
+const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1lYWN6cG13aGZwb25yamR4bW1pIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI1NzkzMjYsImV4cCI6MjA3ODE1NTMyNn0.Gp25mFEAm5L4cKBm5BXsIqmEik81oxkqgc8nqfh9s1s';
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 const app = express();
