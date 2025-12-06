@@ -192,9 +192,6 @@ app.post('/api/auth/login', async (req, res) => {
   try {
     const { email, password } = req.body;
     
-    console.log('LOGIN DEBUG - Email:', email);
-    console.log('LOGIN DEBUG - Password length:', password?.length);
-    
     const { data: user, error: userError } = await supabase
       .from('users')
       .select('*')
@@ -202,35 +199,35 @@ app.post('/api/auth/login', async (req, res) => {
       .single();
 
     if (userError || !user) {
-      console.log('LOGIN ERROR - User not found');
       return res.status(401).json({ error: 'Email ou mot de passe incorrect' });
     }
 
-    console.log('LOGIN DEBUG - User ID:', user.id);
-    console.log('LOGIN DEBUG - Stored hash:', user.user_password?.substring(0, 30) + '...');
-    
     let validPassword = false;
-    
+    const storedPassword = user.user_password;
+
     try {
-      validPassword = await bcrypt.compare(password, user.user_password);
-      console.log('LOGIN DEBUG - bcrypt.compare result:', validPassword);
-    } catch (bcryptError) {
-      console.log('LOGIN ERROR - bcrypt.compare failed:', bcryptError.message);
+      validPassword = await bcrypt.compare(password, storedPassword);
       
-      if (password === user.user_password) {
-        console.log('LOGIN DEBUG - Plain text match');
-        validPassword = true;
-        
-        const hashedPassword = await bcrypt.hash(password, 12);
-        await supabase
-          .from('users')
-          .update({ user_password: hashedPassword })
-          .eq('id', user.id);
+      if (!validPassword) {
+        if (storedPassword && (storedPassword.startsWith('$2a$') || storedPassword.startsWith('$2b$'))) {
+          // C'est déjà un hash bcrypt
+        } else {
+          if (password === storedPassword) {
+            validPassword = true;
+            
+            const hashedPassword = await bcrypt.hash(password, 12);
+            await supabase
+              .from('users')
+              .update({ user_password: hashedPassword })
+              .eq('id', user.id);
+          }
+        }
       }
+    } catch (bcryptError) {
+      console.error('bcrypt error:', bcryptError);
     }
-    
+
     if (!validPassword) {
-      console.log('LOGIN ERROR - Invalid password');
       return res.status(401).json({ error: 'Email ou mot de passe incorrect' });
     }
 
@@ -260,7 +257,6 @@ app.post('/api/auth/login', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('LOGIN ERROR - Server:', error);
     res.status(500).json({ error: 'Erreur serveur' });
   }
 });
