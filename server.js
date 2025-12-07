@@ -1443,6 +1443,112 @@ app.post('/api/sales', requireAuth, async (req, res) => {
     }
 });
 
+app.post('/api/physical-sales', requireAuth, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const { product_id, quantity, price } = req.body;
+    
+    const total_amount = price * quantity;
+    
+    const { data: product, error: productError } = await supabase
+      .from('products')
+      .select('stock, name, purchase_price')
+      .eq('id', product_id)
+      .eq('user_id', userId)
+      .single();
+
+    if (productError || !product) {
+      return res.status(404).json({ error: 'Produit non trouvé' });
+    }
+
+    if (product.stock < quantity) {
+      return res.status(400).json({ 
+        error: `Stock insuffisant. Il reste ${product.stock} unités` 
+      });
+    }
+
+    const purchasePrice = product.purchase_price || 0;
+    const profit = total_amount - (purchasePrice * quantity);
+
+    const { data: sale, error: saleError } = await supabase
+      .from('sales')
+      .insert([{
+        user_id: userId,
+        product_id,
+        quantity,
+        total_amount,
+        profit: profit,
+        sale_type: 'physical',
+        sale_date: new Date().toISOString(),
+        created_at: new Date().toISOString()
+      }])
+      .select();
+
+    if (saleError) throw saleError;
+
+    const newStock = product.stock - quantity;
+    const { error: updateError } = await supabase
+      .from('products')
+      .update({ 
+        stock: newStock,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', product_id)
+      .eq('user_id', userId);
+
+    if (updateError) throw updateError;
+
+    res.json({ 
+      success: true, 
+      sale: sale[0],
+      new_stock: newStock
+    });
+
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/physical-sales', requireAuth, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    
+    const { data: sales, error } = await supabase
+      .from('sales')
+      .select(`
+        *,
+        products (name, price, purchase_price)
+      `)
+      .eq('user_id', userId)
+      .or('sale_type.eq.physical,sale_type.is.null')
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    
+    const salesWithProfit = sales.map(sale => {
+      const product = sale.products;
+      let profit = sale.profit;
+      
+      if (profit === null || profit === undefined) {
+        const purchasePrice = product?.purchase_price || 0;
+        profit = sale.total_amount - (purchasePrice * sale.quantity);
+      }
+      
+      return {
+        ...sale,
+        profit: profit,
+        product_name: product?.name,
+        product_price: product?.price,
+        sale_type: 'physical'
+      };
+    });
+
+    res.json(salesWithProfit || []);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.post('/api/fix-profits', requireAuth, async (req, res) => {
     try {
         const userId = req.user.userId;
