@@ -1498,14 +1498,33 @@ app.post('/api/physical-sales', requireAuth, async (req, res) => {
 
     if (updateError) throw updateError;
 
+    console.log('PHYSICAL SALE:', {
+      saleId: sale[0]?.id,
+      profit: sale[0]?.profit
+    });
+
     res.json({ 
       success: true, 
-      sale: sale[0],
+      sale: {
+        id: sale[0].id,
+        user_id: sale[0].user_id,
+        product_id: sale[0].product_id,
+        quantity: sale[0].quantity,
+        total_amount: sale[0].total_amount,
+        profit: sale[0].profit,
+        sale_type: sale[0].sale_type,
+        sale_date: sale[0].sale_date,
+        created_at: sale[0].created_at
+      },
       new_stock: newStock
     });
 
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('PHYSICAL SALE ERROR:', error);
+    res.status(500).json({ 
+      success: false,
+      error: error.message 
+    });
   }
 });
 
