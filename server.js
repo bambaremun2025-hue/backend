@@ -1349,13 +1349,31 @@ app.get('/api/sales', requireAuth, async (req, res) => {
             .from('sales')
             .select(`
                 *,
-                products (name, price)
+                products (name, price, purchase_price)
             `)
             .eq('user_id', userId) 
             .order('created_at', { ascending: false });
 
         if (error) throw error;
-        res.json(sales || []);
+        
+        const salesWithProfit = sales.map(sale => {
+            const product = sale.products;
+            let profit = sale.profit;
+            
+            if (profit === null || profit === undefined) {
+                const purchasePrice = product?.purchase_price || 0;
+                profit = sale.total_amount - (purchasePrice * sale.quantity);
+            }
+            
+            return {
+                ...sale,
+                profit: profit,
+                product_name: product?.name,
+                product_price: product?.price
+            };
+        });
+
+        res.json(salesWithProfit || []);
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
@@ -1368,7 +1386,7 @@ app.post('/api/sales', requireAuth, async (req, res) => {
         
         const { data: product, error: productError } = await supabase
             .from('products')
-            .select('stock, name')
+            .select('stock, name, purchase_price')
             .eq('id', product_id)
             .eq('user_id', userId)
             .single();
@@ -1383,6 +1401,9 @@ app.post('/api/sales', requireAuth, async (req, res) => {
             });
         }
 
+        const purchasePrice = product.purchase_price || 0;
+        const profit = total_amount - (purchasePrice * quantity);
+
         const { data: sale, error: saleError } = await supabase
             .from('sales')
             .insert([{
@@ -1390,6 +1411,7 @@ app.post('/api/sales', requireAuth, async (req, res) => {
                 product_id,
                 quantity,
                 total_amount,
+                profit: profit,
                 sale_date: new Date().toISOString(),
                 created_at: new Date().toISOString()
             }])
@@ -1412,13 +1434,15 @@ app.post('/api/sales', requireAuth, async (req, res) => {
         res.json({ 
             success: true, 
             sale: sale[0],
-            new_stock: newStock
+            new_stock: newStock,
+            profit_calculated: profit
         });
 
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
 });
+
 app.post('/api/products/upload', requireAuth, async (req, res) => {
     try {
         const userId = req.user.userId;
