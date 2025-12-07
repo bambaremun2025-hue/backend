@@ -1443,6 +1443,53 @@ app.post('/api/sales', requireAuth, async (req, res) => {
     }
 });
 
+app.post('/api/fix-profits', requireAuth, async (req, res) => {
+    try {
+        const userId = req.user.userId;
+        
+        const { data: sales, error } = await supabase
+            .from('sales')
+            .select(`
+                *,
+                products (purchase_price)
+            `)
+            .eq('user_id', userId);
+
+        if (error) throw error;
+
+        let fixed = 0;
+
+        for (const sale of sales) {
+            const product = sale.products;
+            if (product && (sale.profit === null || sale.profit === undefined)) {
+                const purchasePrice = product.purchase_price || 0;
+                const profit = sale.total_amount - (purchasePrice * sale.quantity);
+                
+                const { error: updateError } = await supabase
+                    .from('sales')
+                    .update({ 
+                        profit: profit,
+                        updated_at: new Date().toISOString()
+                    })
+                    .eq('id', sale.id);
+
+                if (!updateError) {
+                    fixed++;
+                }
+            }
+        }
+
+        res.json({
+            success: true,
+            total_sales: sales.length,
+            profits_fixed: fixed
+        });
+
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
 app.post('/api/products/upload', requireAuth, async (req, res) => {
     try {
         const userId = req.user.userId;
