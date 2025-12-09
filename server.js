@@ -2507,6 +2507,143 @@ app.get('/api/user/subscription-status', requireAuth, async (req, res) => {
   }
 });
 
+app.post('/api/track/malick', async (req, res) => {
+  try {
+    const { user_email, user_id } = req.body;
+    
+    const { data: existing } = await supabase
+      .from('affiliate_referrals')
+      .select('id')
+      .eq('referred_email', user_email)
+      .eq('affiliate_name', 'Malick')
+      .single();
+    
+    if (existing) {
+      return res.json({ success: true, message: 'Déjà tracké' });
+    }
+    
+    const { data, error } = await supabase
+      .from('affiliate_referrals')
+      .insert([{
+        affiliate_name: 'Malick',
+        referred_email: user_email,
+        referred_user_id: user_id,
+        status: 'tracked'
+      }])
+      .select();
+    
+    if (error) throw error;
+    
+    res.json({ success: true, tracking_id: data[0].id });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/track/malick-payment', async (req, res) => {
+  try {
+    const { user_id, amount, plan } = req.body;
+    
+    const { data: trackings } = await supabase
+      .from('affiliate_referrals')
+      .select('*')
+      .eq('referred_user_id', user_id)
+      .eq('affiliate_name', 'Malick')
+      .limit(1);
+    
+    if (!trackings || trackings.length === 0) {
+      return res.json({ success: false });
+    }
+    
+    const commission = 1000;
+    
+    const { data: updated } = await supabase
+      .from('affiliate_referrals')
+      .update({
+        subscription_amount: amount,
+        subscription_type: plan,
+        commission: commission,
+        status: 'completed'
+      })
+      .eq('id', trackings[0].id)
+      .select();
+    
+    res.json({
+      success: true,
+      commission: commission,
+      tracking: updated[0]
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/admin/affiliate-malick', requireAdmin, async (req, res) => {
+  try {
+    const { data: referrals, error } = await supabase
+      .from('affiliate_referrals')
+      .select('*')
+      .eq('affiliate_name', 'Malick')
+      .order('created_at', { ascending: false });
+    
+    if (error) throw error;
+      const stats = {
+      total_referrals: referrals?.length || 0,
+      pending: referrals?.filter(r => r.status === 'pending').length || 0,
+      tracked: referrals?.filter(r => r.status === 'tracked').length || 0,
+      completed: referrals?.filter(r => r.status === 'completed').length || 0,
+      paid: referrals?.filter(r => r.status === 'paid').length || 0,
+      
+      total_commission: referrals
+        ?.filter(r => r.commission)
+        .reduce((sum, r) => sum + parseFloat(r.commission || 0), 0) || 0,
+      
+      pending_commission: referrals
+        ?.filter(r => r.status === 'completed' || r.status === 'tracked')
+        .reduce((sum, r) => sum + parseFloat(r.commission || 0), 0) || 0,
+      
+      paid_commission: referrals
+        ?.filter(r => r.status === 'paid')
+        .reduce((sum, r) => sum + parseFloat(r.commission || 0), 0) || 0
+    };
+    
+    res.json({
+      success: true,
+      affiliate: 'Malick',
+      referrals: referrals || [],
+      stats: stats,
+      link_affiliation: 'https://samaboutiksn.netlify.app/register?affiliate=MALICK2024'
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/admin/affiliate-pay', requireAdmin, async (req, res) => {
+  try {
+    const { referral_id } = req.body;
+    
+    const { data: referral, error } = await supabase
+      .from('affiliate_referrals')
+      .update({
+        status: 'paid',
+        paid_date: new Date().toISOString()
+      })
+      .eq('id', referral_id)
+      .select();
+    
+    if (error) throw error;
+    
+    res.json({
+      success: true,
+      message: 'Commission marquée comme payée',
+      referral: referral[0]
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`Serveur demarre sur le port ${PORT}`);
 });
