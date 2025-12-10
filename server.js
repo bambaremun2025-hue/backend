@@ -2587,7 +2587,8 @@ app.get('/api/admin/affiliate-malick', requireAdmin, async (req, res) => {
       .order('created_at', { ascending: false });
     
     if (error) throw error;
-      const stats = {
+    
+    const stats = {
       total_referrals: referrals?.length || 0,
       pending: referrals?.filter(r => r.status === 'pending').length || 0,
       tracked: referrals?.filter(r => r.status === 'tracked').length || 0,
@@ -2612,7 +2613,7 @@ app.get('/api/admin/affiliate-malick', requireAdmin, async (req, res) => {
       affiliate: 'Malick',
       referrals: referrals || [],
       stats: stats,
-      link_affiliation: 'https://samaboutiksn.netlify.app/register?affiliate=MALICK2024'
+      link_affiliation: 'https://samaboutiksn.netlify.app/signup?affiliate=MALICK2024'
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
