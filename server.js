@@ -2685,6 +2685,74 @@ app.get('/api/test-token', async (req, res) => {
   }
 });
 
+app.post('/api/domains/purchase', requireAuth, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const { requested_domain } = req.body;
+    
+    if (!requested_domain) {
+      return res.status(400).json({ error: 'Domaine requis' });
+    }
+    
+    const { data: existing } = await supabase
+      .from('custom_domains')
+      .select('id')
+      .eq('requested_domain', requested_domain.toLowerCase())
+      .single();
+    
+    if (existing) {
+      return res.status(400).json({ error: 'Domaine déjà pris' });
+    }
+    
+    const expiresAt = new Date();
+    expiresAt.setFullYear(expiresAt.getFullYear() + 1);
+    
+    const { data, error } = await supabase
+      .from('custom_domains')
+      .insert([{
+        user_id: userId,
+        requested_domain: requested_domain.toLowerCase(),
+        status: 'pending',
+        price: 10000,
+        expires_at: expiresAt.toISOString()
+      }])
+      .select();
+    
+    if (error) throw error;
+    
+    res.json({
+      success: true,
+      domain: data[0],
+      message: 'Domaine réservé pour 10 000 FCFA/an'
+    });
+    
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/user/domains/:user_id', async (req, res) => {
+  try {
+    const { user_id } = req.params;
+    
+    const { data, error } = await supabase
+      .from('custom_domains')
+      .select('*')
+      .eq('user_id', user_id)
+      .order('created_at', { ascending: false });
+    
+    if (error) throw error;
+    
+    res.json({
+      success: true,
+      domains: data || []
+    });
+    
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`Serveur demarre sur le port ${PORT}`);
 });
