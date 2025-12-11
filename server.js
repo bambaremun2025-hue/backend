@@ -2753,6 +2753,56 @@ app.get('/api/user/domains/:user_id', async (req, res) => {
   }
 });
 
+app.get('/api/admin/pending-domains', requireAdmin, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('custom_domains')
+      .select(`
+        *,
+        users (email, full_name, shop_name)
+      `)
+      .eq('status', 'pending')
+      .order('created_at', { ascending: false });
+    
+    if (error) throw error;
+    
+    res.json({
+      success: true,
+      domains: data || []
+    });
+    
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/admin/activate-domain', requireAdmin, async (req, res) => {
+  try {
+    const { domain_id } = req.body;
+    
+    const { data, error } = await supabase
+      .from('custom_domains')
+      .update({
+        status: 'active',
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', domain_id)
+      .select();
+    
+    if (error) throw error;
+    
+    res.json({
+      success: true,
+      message: 'Domaine activé',
+      domain: data[0]
+    });
+    
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`Serveur demarre sur le port ${PORT}`);
 });
