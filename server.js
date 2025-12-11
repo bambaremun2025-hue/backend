@@ -2690,8 +2690,10 @@ app.post('/api/domains/purchase', requireAuth, async (req, res) => {
     const userId = req.user.userId;
     const { requested_domain } = req.body;
     
-    if (!requested_domain) {
-      return res.status(400).json({ error: 'Domaine requis' });
+    if (!requested_domain) return res.status(400).json({ error: 'Domaine requis' });
+    
+    if (!requested_domain.toLowerCase().endsWith('.sn')) {
+      return res.status(400).json({ error: 'Doit terminer par .sn' });
     }
     
     const { data: existing } = await supabase
@@ -2700,9 +2702,7 @@ app.post('/api/domains/purchase', requireAuth, async (req, res) => {
       .eq('requested_domain', requested_domain.toLowerCase())
       .single();
     
-    if (existing) {
-      return res.status(400).json({ error: 'Domaine déjà pris' });
-    }
+    if (existing) return res.status(400).json({ error: 'Domaine déjà pris' });
     
     const expiresAt = new Date();
     expiresAt.setFullYear(expiresAt.getFullYear() + 1);
@@ -2712,7 +2712,7 @@ app.post('/api/domains/purchase', requireAuth, async (req, res) => {
       .insert([{
         user_id: userId,
         requested_domain: requested_domain.toLowerCase(),
-        status: 'pending',
+        status: 'active',
         price: 10000,
         expires_at: expiresAt.toISOString()
       }])
@@ -2723,7 +2723,7 @@ app.post('/api/domains/purchase', requireAuth, async (req, res) => {
     res.json({
       success: true,
       domain: data[0],
-      message: 'Domaine réservé pour 10 000 FCFA/an'
+      message: 'Domaine simulé activé'
     });
     
   } catch (error) {
@@ -2753,7 +2753,7 @@ app.get('/api/user/domains/:user_id', async (req, res) => {
   }
 });
 
-app.get('/api/admin/pending-domains', requireAdmin, async (req, res) => {
+app.get('/api/admin/all-domains', requireAdmin, async (req, res) => {
   try {
     const { data, error } = await supabase
       .from('custom_domains')
@@ -2761,7 +2761,6 @@ app.get('/api/admin/pending-domains', requireAdmin, async (req, res) => {
         *,
         users (email, full_name, shop_name)
       `)
-      .eq('status', 'pending')
       .order('created_at', { ascending: false });
     
     if (error) throw error;
@@ -2775,33 +2774,6 @@ app.get('/api/admin/pending-domains', requireAdmin, async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
-
-app.post('/api/admin/activate-domain', requireAdmin, async (req, res) => {
-  try {
-    const { domain_id } = req.body;
-    
-    const { data, error } = await supabase
-      .from('custom_domains')
-      .update({
-        status: 'active',
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', domain_id)
-      .select();
-    
-    if (error) throw error;
-    
-    res.json({
-      success: true,
-      message: 'Domaine activé',
-      domain: data[0]
-    });
-    
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
 
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`Serveur demarre sur le port ${PORT}`);
