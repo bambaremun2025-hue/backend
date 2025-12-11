@@ -2113,29 +2113,45 @@ app.get('/api/user/payment-settings', requireAuth, async (req, res) => {
   }
 });
 
-app.put('/api/user/shop-settings', requireAuth, async (req, res) => {
+app.put('/api/user/shop-settings', async (req, res) => {
   try {
-    const userId = req.user.userId;
+    const authHeader = req.headers.authorization;
+    if (!authHeader) return res.status(401).json({ error: 'Token manquant' });
+    
+    const token = authHeader.split(' ')[1];
+    let decoded;
+    
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET || 'default-secret');
+    } catch (error) {
+      return res.status(403).json({ error: 'Token invalide' });
+    }
+    
+    const userId = decoded.userId;
     const { shop_name } = req.body;
-
-    const { data: user, error } = await supabase
+    
+    if (!shop_name) return res.status(400).json({ error: 'shop_name requis' });
+    
+    const { data: user, error: dbError } = await supabase
       .from('users')
-      .update({
-        shop_name: shop_name || 'Ma Boutique',
+      .update({ 
+        shop_name: shop_name.trim(),
         updated_at: new Date().toISOString()
       })
       .eq('id', userId)
-      .select();
-
-    if (error) throw error;
-
+      .select('id, shop_name');
+    
+    if (dbError) throw dbError;
+    if (!user || user.length === 0) return res.status(404).json({ error: 'User non trouvé' });
+    
     res.json({
       success: true,
-      user: user[0],
-      message: 'Nom de boutique mis à jour'
+      message: 'Nom mis à jour',
+      shop_name: user[0].shop_name
     });
-
+    
   } catch (error) {
+    console.error('Error:', error);
     res.status(500).json({ error: error.message });
   }
 });
