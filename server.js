@@ -2645,6 +2645,30 @@ app.post('/api/admin/affiliate-pay', requireAdmin, async (req, res) => {
   }
 });
 
+app.get('/api/test-token', async (req, res) => {
+  const authHeader = req.headers.authorization;
+  
+  if (!authHeader) {
+    return res.json({ error: 'No token' });
+  }
+  
+  const token = authHeader.split(' ')[1];
+  
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'default-secret');
+    
+    res.json({ 
+      success: true, 
+      decoded: decoded
+    });
+  } catch (error) {
+    res.json({ 
+      error: 'Token verification failed', 
+      message: error.message
+    });
+  }
+});
+
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`Serveur demarre sur le port ${PORT}`);
 });
