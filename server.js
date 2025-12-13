@@ -2775,6 +2775,181 @@ app.get('/api/admin/all-domains', requireAdmin, async (req, res) => {
   }
 });
 
+app.delete('/api/admin/users/:user_id', requireAdmin, async (req, res) => {
+  try {
+    const { user_id } = req.params;
+    
+    const { data: userToDelete } = await supabase
+      .from('users')
+      .select('email')
+      .eq('id', user_id)
+      .single();
+    
+    if (userToDelete?.email === 'samaboutiksen@gmail.com') {
+      return res.status(400).json({ error: 'Impossible de supprimer admin principal' });
+    }
+    
+    await supabase.from('products').delete().eq('user_id', user_id);
+    await supabase.from('sales').delete().eq('user_id', user_id);
+    await supabase.from('online_orders').delete().eq('user_id', user_id);
+    await supabase.from('custom_domains').delete().eq('user_id', user_id);
+    await supabase.from('affiliate_referrals').delete().eq('referred_user_id', user_id);
+    
+    const { error: deleteError } = await supabase
+      .from('users')
+      .delete()
+      .eq('id', user_id);
+    
+    if (deleteError) throw deleteError;
+    
+    res.json({ success: true, message: 'User supprimé' });
+    
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/admin/users/bulk-delete', requireAdmin, async (req, res) => {
+  try {
+    const { user_ids } = req.body;
+    
+    const { data: admins } = await supabase
+      .from('users')
+      .select('id')
+      .eq('email', 'samaboutiksen@gmail.com');
+    
+    const adminIds = admins.map(a => a.id);
+    const filteredIds = user_ids.filter(id => !adminIds.includes(id));
+    
+    if (filteredIds.length === 0) {
+      return res.json({ success: true, deleted: 0 });
+    }
+    
+    await supabase.from('products').delete().in('user_id', filteredIds);
+    await supabase.from('sales').delete().in('user_id', filteredIds);
+    await supabase.from('online_orders').delete().in('user_id', filteredIds);
+    await supabase.from('custom_domains').delete().in('user_id', filteredIds);
+    
+    const { error: deleteError } = await supabase
+      .from('users')
+      .delete()
+      .in('id', filteredIds);
+    
+    if (deleteError) throw deleteError;
+    
+    res.json({ success: true, deleted: filteredIds.length });
+    
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+bash
+# Deploy backend
+git add server.js
+git commit -m "ADD: Routes suppression users admin"
+git push origin main
+tsx
+// client/pages/admin/UsersAdmin.tsx - AJOUTER BOUTON SUPPRESSION
+const UsersAdmin = () => {
+  const [users, setUsers] = useState([]);
+  const [selectedUsers, setSelectedUsers] = useState([]);
+  
+  const deleteUser = async (userId) => {
+    if (!confirm('Supprimer cet utilisateur et toutes ses données ?')) return;
+    
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`https://backend-s05x.onrender.com/api/admin/users/${userId}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      
+      const data = await response.json();
+      if (data.success) {
+        alert('Utilisateur supprimé');
+        loadUsers();
+      }
+    } catch (error) {
+      alert('Erreur: ' + error.message);
+    }
+  };
+  
+  const deleteSelected = async () => {
+    if (selectedUsers.length === 0) return;
+    if (!confirm(`Supprimer ${selectedUsers.length} utilisateurs ?`)) return;
+    
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch('https://backend-s05x.onrender.com/api/admin/users/bulk-delete', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ user_ids: selectedUsers })
+      });
+      
+      const data = await response.json();
+      alert(`${data.deleted} utilisateurs supprimés`);
+      setSelectedUsers([]);
+      loadUsers();
+    } catch (error) {
+      alert('Erreur: ' + error.message);
+    }
+  };
+  
+  return (
+    <div>
+      <button onClick={deleteSelected} disabled={selectedUsers.length === 0}>
+        Supprimer sélection ({selectedUsers.length})
+      </button>
+      
+      <table>
+        <thead>
+          <tr>
+            <th><input type="checkbox" onChange={(e) => {
+              if (e.target.checked) {
+                setSelectedUsers(users.map(u => u.id));
+              } else {
+                setSelectedUsers([]);
+              }
+            }} /></th>
+            <th>Email</th>
+            <th>Nom</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {users.map(user => (
+            <tr key={user.id}>
+              <td>
+                <input 
+                  type="checkbox"
+                  checked={selectedUsers.includes(user.id)}
+                  onChange={(e) => {
+                    if (e.target.checked) {
+                      setSelectedUsers([...selectedUsers, user.id]);
+                    } else {
+                      setSelectedUsers(selectedUsers.filter(id => id !== user.id));
+                    }
+                  }}
+                />
+              </td>
+              <td>{user.email}</td>
+              <td>{user.full_name}</td>
+              <td>
+                <button onClick={() => deleteUser(user.id)}>
+                  🗑️ Supprimer
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+};
+
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`Serveur demarre sur le port ${PORT}`);
 });
