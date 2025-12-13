@@ -2849,7 +2849,6 @@ git add server.js
 git commit -m "ADD: Routes suppression users admin"
 git push origin main
 tsx
-// client/pages/admin/UsersAdmin.tsx - AJOUTER BOUTON SUPPRESSION
 const UsersAdmin = () => {
   const [users, setUsers] = useState([]);
   const [selectedUsers, setSelectedUsers] = useState([]);
