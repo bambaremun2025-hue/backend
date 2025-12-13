@@ -2774,7 +2774,6 @@ app.get('/api/admin/all-domains', requireAdmin, async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
-
 app.delete('/api/admin/users/:user_id', requireAdmin, async (req, res) => {
   try {
     const { user_id } = req.params;
@@ -2843,111 +2842,6 @@ app.post('/api/admin/users/bulk-delete', requireAdmin, async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
-bash
-# Deploy backend
-git add server.js
-git commit -m "ADD: Routes suppression users admin"
-git push origin main
-tsx
-const UsersAdmin = () => {
-  const [users, setUsers] = useState([]);
-  const [selectedUsers, setSelectedUsers] = useState([]);
-  
-  const deleteUser = async (userId) => {
-    if (!confirm('Supprimer cet utilisateur et toutes ses données ?')) return;
-    
-    try {
-      const token = localStorage.getItem('token');
-      const response = await fetch(`https://backend-s05x.onrender.com/api/admin/users/${userId}`, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      
-      const data = await response.json();
-      if (data.success) {
-        alert('Utilisateur supprimé');
-        loadUsers();
-      }
-    } catch (error) {
-      alert('Erreur: ' + error.message);
-    }
-  };
-  
-  const deleteSelected = async () => {
-    if (selectedUsers.length === 0) return;
-    if (!confirm(`Supprimer ${selectedUsers.length} utilisateurs ?`)) return;
-    
-    try {
-      const token = localStorage.getItem('token');
-      const response = await fetch('https://backend-s05x.onrender.com/api/admin/users/bulk-delete', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ user_ids: selectedUsers })
-      });
-      
-      const data = await response.json();
-      alert(`${data.deleted} utilisateurs supprimés`);
-      setSelectedUsers([]);
-      loadUsers();
-    } catch (error) {
-      alert('Erreur: ' + error.message);
-    }
-  };
-  
-  return (
-    <div>
-      <button onClick={deleteSelected} disabled={selectedUsers.length === 0}>
-        Supprimer sélection ({selectedUsers.length})
-      </button>
-      
-      <table>
-        <thead>
-          <tr>
-            <th><input type="checkbox" onChange={(e) => {
-              if (e.target.checked) {
-                setSelectedUsers(users.map(u => u.id));
-              } else {
-                setSelectedUsers([]);
-              }
-            }} /></th>
-            <th>Email</th>
-            <th>Nom</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {users.map(user => (
-            <tr key={user.id}>
-              <td>
-                <input 
-                  type="checkbox"
-                  checked={selectedUsers.includes(user.id)}
-                  onChange={(e) => {
-                    if (e.target.checked) {
-                      setSelectedUsers([...selectedUsers, user.id]);
-                    } else {
-                      setSelectedUsers(selectedUsers.filter(id => id !== user.id));
-                    }
-                  }}
-                />
-              </td>
-              <td>{user.email}</td>
-              <td>{user.full_name}</td>
-              <td>
-                <button onClick={() => deleteUser(user.id)}>
-                  🗑️ Supprimer
-                </button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-};
 
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`Serveur demarre sur le port ${PORT}`);
