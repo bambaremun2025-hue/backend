@@ -3145,6 +3145,173 @@ app.post('/api/affiliate/make-payment', requireAdmin, async (req, res) => {
   }
 });
 
+app.get('/api/affiliate/:influencer_id/analytics', requireAdmin, async (req, res) => {
+  try {
+    const { influencer_id } = req.params;
+    const { period = 'all' } = req.query;
+    
+    const { data: referrals, error: refError } = await supabase
+      .from('affiliate_referrals')
+      .select(`
+        *,
+        users (*)
+      `)
+      .eq('influencer_id', influencer_id)
+      .order('created_at', { ascending: false });
+    
+    if (refError) throw refError;
+    
+    const users = referrals.map(r => r.users).filter(Boolean);
+    
+    const stats = {
+      totalReferrals: users.length,
+      trialUsers: users.filter(u => u.subscription_type === 'trial').length,
+      premiumUsers: users.filter(u => u.subscription_type === 'premium').length,
+      activeTrials: users.filter(u => 
+        u.subscription_type === 'trial' && 
+        new Date(u.trial_ends_at) > new Date()
+      ).length,
+      expiredTrials: users.filter(u => 
+        u.subscription_type === 'trial' && 
+        new Date(u.trial_ends_at) <= new Date()
+      ).length,
+      conversionRate: users.length > 0 
+        ? (users.filter(u => u.subscription_type === 'premium').length / users.length * 100).toFixed(1)
+        : 0,
+      commissionsDue: referrals
+        .filter(r => r.status === 'approved' && !r.paid_date)
+        .reduce((sum, r) => sum + (r.commission_amount || 0), 0)
+    };
+    
+    const recentActivity = referrals.slice(0, 50).map(r => ({
+      userId: r.referred_user_id,
+      userEmail: r.users?.email,
+      userName: r.users?.full_name,
+      userShop: r.users?.shop_name,
+      subscriptionType: r.users?.subscription_type,
+      trialEndsAt: r.users?.trial_ends_at,
+      subscriptionEndDate: r.users?.subscription_end_date,
+      referralDate: r.created_at,
+      commissionAmount: r.commission_amount,
+      commissionStatus: r.status
+    }));
+    
+    res.json({
+      success: true,
+      influencer_id,
+      stats,
+      recentActivity,
+      totalReferrals: referrals.length
+    });
+    
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/affiliate/:influencer_id/users', requireAdmin, async (req, res) => {
+  try {
+    const { influencer_id } = req.params;
+    
+    const { data: referrals, error } = await supabase
+      .from('affiliate_referrals')
+      .select(`
+        id,
+        created_at,
+        status,
+        commission_amount,
+        users (
+          id,
+          email,
+          full_name,
+          shop_name,
+          subscription_type,
+          trial_ends_at,
+          subscription_end_date,
+          created_at as user_created_at
+        )
+      `)
+      .eq('influencer_id', influencer_id)
+      .order('created_at', { ascending: false });
+    
+    if (error) throw error;
+    
+    const users = referrals.map(r => ({
+      referralId: r.id,
+      referralDate: r.created_at,
+      commissionAmount: r.commission_amount,
+      commissionStatus: r.status,
+      ...r.users
+    })).filter(u => u.id);
+    
+    res.json({
+      success: true,
+      users: users,
+      count: users.length
+    });
+    
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/affiliate/:influencer_id/monthly-stats', requireAdmin, async (req, res) => {
+  try {
+    const { influencer_id } = req.params;
+    
+    const { data: referrals, error } = await supabase
+      .from('affiliate_referrals')
+      .select(`
+        *,
+        users (*)
+      `)
+      .eq('influencer_id', influencer_id);
+    
+    if (error) throw error;
+    
+    const monthlyStats = {};
+    
+    referrals.forEach(r => {
+      const month = r.created_at.substring(0, 7);
+      if (!monthlyStats[month]) {
+        monthlyStats[month] = {
+          month,
+          referrals: 0,
+          trials: 0,
+          premiums: 0,
+          commissions: 0
+        };
+      }
+      
+      monthlyStats[month].referrals++;
+      
+      if (r.users?.subscription_type === 'trial') {
+        monthlyStats[month].trials++;
+      }
+      
+      if (r.users?.subscription_type === 'premium') {
+        monthlyStats[month].premiums++;
+      }
+      
+      if (r.commission_amount) {
+        monthlyStats[month].commissions += r.commission_amount;
+      }
+    });
+    
+    const sortedStats = Object.values(monthlyStats)
+      .sort((a, b) => b.month.localeCompare(a.month))
+      .slice(0, 12);
+    
+    res.json({
+      success: true,
+      monthlyStats: sortedStats
+    });
+    
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`Serveur demarre sur le port ${PORT}`);
 });
