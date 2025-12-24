@@ -3061,19 +3061,30 @@ app.get('/api/affiliate/dashboard/:influencer_id', async (req, res) => {
 
 app.get('/api/admin/affiliates', requireAdmin, async (req, res) => {
   try {
-    const { data: influencers, error } = await supabase
+    const { data: influencers, error: infError } = await supabase
       .from('affiliate_influencers')
-      .select(`
-        *,
-        affiliate_referrals(count)
-      `)
+      .select('*')
       .order('created_at', { ascending: false });
     
-    if (error) throw error;
+    if (infError) throw infError;
+    
+    const influencersWithCounts = await Promise.all(
+      (influencers || []).map(async (influencer) => {
+        const { count } = await supabase
+          .from('affiliate_referrals')
+          .select('*', { count: 'exact', head: true })
+          .eq('influencer_id', influencer.id);
+        
+        return {
+          ...influencer,
+          affiliate_referrals: { count: count || 0 }
+        };
+      })
+    );
     
     res.json({
       success: true,
-      influencers: influencers || []
+      influencers: influencersWithCounts
     });
     
   } catch (error) {
