@@ -2848,7 +2848,8 @@ app.post('/api/affiliate/register', requireAdmin, async (req, res) => {
   try {
     const { name, email, phone, social_media } = req.body;
     
-    const uniqueCode = `SAMA_INF_${Math.random().toString(36).substr(2, 8).toUpperCase()}`;
+    const uniqueCode = `SAMA_${Math.random().toString(36).substr(2, 8).toUpperCase()}`;
+    const affiliateLink = `https://samaboutiksn.netlify.app/signup?affiliate=${uniqueCode}`;
     
     const { data, error } = await supabase
       .from('affiliate_influencers')
@@ -2858,6 +2859,7 @@ app.post('/api/affiliate/register', requireAdmin, async (req, res) => {
         phone,
         social_media,
         unique_code: uniqueCode,
+        affiliate_link: affiliateLink,
         commission_first_month: 40.00,
         commission_recurring: 20.00
       }])
@@ -2868,14 +2870,13 @@ app.post('/api/affiliate/register', requireAdmin, async (req, res) => {
     res.json({
       success: true,
       influencer: data[0],
-      affiliate_link: `https://samaboutiksn.netlify.app/signup?affiliate=${uniqueCode}`
+      affiliate_link: affiliateLink
     });
     
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
-
 app.post('/api/track-affiliate-signup', async (req, res) => {
   try {
     const { user_id, user_email, affiliate_code } = req.body;
