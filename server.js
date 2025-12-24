@@ -2843,6 +2843,296 @@ app.post('/api/admin/users/bulk-delete', requireAdmin, async (req, res) => {
   }
 });
 
+
+app.post('/api/affiliate/register', requireAdmin, async (req, res) => {
+  try {
+    const { name, email, phone, social_media } = req.body;
+    
+    const uniqueCode = `SAMA_INF_${Math.random().toString(36).substr(2, 8).toUpperCase()}`;
+    
+    const { data, error } = await supabase
+      .from('affiliate_influencers')
+      .insert([{
+        name,
+        email,
+        phone,
+        social_media,
+        unique_code: uniqueCode,
+        commission_first_month: 40.00,
+        commission_recurring: 20.00
+      }])
+      .select();
+    
+    if (error) throw error;
+    
+    res.json({
+      success: true,
+      influencer: data[0],
+      affiliate_link: `https://samaboutiksn.netlify.app/signup?affiliate=${uniqueCode}`
+    });
+    
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/track-affiliate-signup', async (req, res) => {
+  try {
+    const { user_id, user_email, affiliate_code } = req.body;
+    
+    const { data: influencer } = await supabase
+      .from('affiliate_influencers')
+      .select('*')
+      .eq('unique_code', affiliate_code)
+      .single();
+    
+    if (!influencer) {
+      return res.json({ success: false });
+    }
+    
+    const { data: referral } = await supabase
+      .from('affiliate_referrals')
+      .insert([{
+        influencer_id: influencer.id,
+        referred_user_id: user_id,
+        status: 'pending'
+      }])
+      .select();
+    
+    res.json({
+      success: true,
+      referral_id: referral[0].id
+    });
+    
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/track-affiliate-premium', async (req, res) => {
+  try {
+    const { user_id, subscription_amount } = req.body;
+    
+    const { data: referral } = await supabase
+      .from('affiliate_referrals')
+      .select('*, affiliate_influencers(*)')
+      .eq('referred_user_id', user_id)
+      .single();
+    
+    if (!referral) return res.json({ success: false });
+    
+    const influencer = referral.affiliate_influencers;
+    const commissionAmount = subscription_amount * (influencer.commission_first_month / 100);
+    
+    await supabase
+      .from('affiliate_referrals')
+      .update({
+        subscription_type: 'premium',
+        subscription_amount: subscription_amount,
+        commission_amount: commissionAmount,
+        commission_type: 'first_month',
+        month_reference: new Date().toISOString().slice(0, 7),
+        status: 'approved'
+      })
+      .eq('id', referral.id);
+    
+    await supabase
+      .from('affiliate_influencers')
+      .update({
+        total_earnings: (influencer.total_earnings || 0) + commissionAmount
+      })
+      .eq('id', influencer.id);
+    
+    res.json({
+      success: true,
+      commission: commissionAmount
+    });
+    
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/affiliate/calculate-recurring', requireAdmin, async (req, res) => {
+  try {
+    const currentMonth = new Date().toISOString().slice(0, 7);
+    
+    const { data: activeReferrals } = await supabase
+      .from('affiliate_referrals')
+      .select('*, affiliate_influencers(*), users!inner(*)')
+      .eq('subscription_type', 'premium')
+      .eq('users.is_premium', true)
+      .eq('users.subscription_type', 'premium');
+    
+    let totalCommissions = 0;
+    
+    for (const referral of activeReferrals) {
+      const { data: existing } = await supabase
+        .from('affiliate_referrals')
+        .select('id')
+        .eq('referred_user_id', referral.referred_user_id)
+        .eq('month_reference', currentMonth)
+        .eq('commission_type', 'recurring')
+        .single();
+      
+      if (!existing) {
+        const commissionAmount = referral.subscription_amount * (referral.affiliate_influencers.commission_recurring / 100);
+        
+        await supabase
+          .from('affiliate_referrals')
+          .insert([{
+            influencer_id: referral.influencer_id,
+            referred_user_id: referral.referred_user_id,
+            subscription_type: 'premium',
+            subscription_amount: referral.subscription_amount,
+            commission_amount: commissionAmount,
+            commission_type: 'recurring',
+            month_reference: currentMonth,
+            status: 'approved'
+          }]);
+        
+        await supabase
+          .from('affiliate_influencers')
+          .update({
+            total_earnings: (referral.affiliate_influencers.total_earnings || 0) + commissionAmount
+          })
+          .eq('id', referral.influencer_id);
+        
+        totalCommissions += commissionAmount;
+      }
+    }
+    
+    res.json({
+      success: true,
+      total: totalCommissions
+    });
+    
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/affiliate/dashboard/:influencer_id', async (req, res) => {
+  try {
+    const { influencer_id } = req.params;
+    
+    const { data: influencer } = await supabase
+      .from('affiliate_influencers')
+      .select('*')
+      .eq('id', influencer_id)
+      .single();
+    
+    const { data: referrals } = await supabase
+      .from('affiliate_referrals')
+      .select(`
+        *,
+        users (email, full_name, shop_name, is_premium, subscription_end_date)
+      `)
+      .eq('influencer_id', influencer_id)
+      .order('created_at', { ascending: false });
+    
+    const { data: payments } = await supabase
+      .from('affiliate_payments')
+      .select('*')
+      .eq('influencer_id', influencer_id)
+      .order('created_at', { ascending: false });
+    
+    const stats = {
+      total_referrals: referrals?.length || 0,
+      active_referrals: referrals?.filter(r => r.users?.is_premium).length || 0,
+      pending_commission: referrals
+        ?.filter(r => r.status === 'approved' && !r.paid_date)
+        .reduce((sum, r) => sum + (r.commission_amount || 0), 0) || 0,
+      total_earned: influencer?.total_earnings || 0
+    };
+    
+    res.json({
+      success: true,
+      influencer,
+      stats,
+      referrals: referrals || [],
+      payments: payments || []
+    });
+    
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/admin/affiliates', requireAdmin, async (req, res) => {
+  try {
+    const { data: influencers, error } = await supabase
+      .from('affiliate_influencers')
+      .select(`
+        *,
+        affiliate_referrals(count)
+      `)
+      .order('created_at', { ascending: false });
+    
+    if (error) throw error;
+    
+    res.json({
+      success: true,
+      influencers: influencers || []
+    });
+    
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/affiliate/make-payment', requireAdmin, async (req, res) => {
+  try {
+    const { influencer_id, amount, payment_method } = req.body;
+    
+    const { data: pending } = await supabase
+      .from('affiliate_referrals')
+      .select('id, commission_amount')
+      .eq('influencer_id', influencer_id)
+      .eq('status', 'approved')
+      .is('paid_date', null);
+    
+    if (!pending || pending.length === 0) {
+      return res.status(400).json({ error: 'Aucune commission en attente' });
+    }
+    
+    const totalPending = pending.reduce((sum, r) => sum + (r.commission_amount || 0), 0);
+    
+    if (amount > totalPending) {
+      return res.status(400).json({ error: 'Montant trop élevé' });
+    }
+    
+    const { data: payment } = await supabase
+      .from('affiliate_payments')
+      .insert([{
+        influencer_id,
+        amount,
+        payment_method,
+        period: new Date().toISOString().slice(0, 7),
+        status: 'completed'
+      }])
+      .select();
+    
+    await supabase
+      .from('affiliate_referrals')
+      .update({
+        paid_date: new Date().toISOString(),
+        status: 'paid'
+      })
+      .eq('influencer_id', influencer_id)
+      .eq('status', 'approved')
+      .is('paid_date', null);
+    
+    res.json({
+      success: true,
+      payment: payment[0]
+    });
+    
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`Serveur demarre sur le port ${PORT}`);
 });
