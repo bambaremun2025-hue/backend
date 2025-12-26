@@ -111,12 +111,12 @@ const requireAdmin = async (req, res, next) => {
 
 app.post('/api/auth/register', async (req, res) => {
     try {
-        const { email, password, username, business, type, name } = req.body;
+        const { email, password, username, business, type, name, phone, affiliate_code } = req.body;
    
         const userName = name || username || business || email;
         
         if (!email || !password || !userName) {
-            return res.status(400).json({ error: 'Email, mot de passe et nom sont requis' });
+            return res.status(400).json({ error: 'Email, mot de passe et nom requis' });
         }
 
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -131,7 +131,7 @@ app.post('/api/auth/register', async (req, res) => {
             .single();
 
         if (existingUser) {
-            return res.status(400).json({ error: 'Cet email est déjà utilisé' });
+            return res.status(400).json({ error: 'Email déjà utilisé' });
         }
 
         const hashedPassword = await bcrypt.hash(password, 12);
@@ -149,13 +149,26 @@ app.post('/api/auth/register', async (req, res) => {
                     trial_ends_at: trialEnd.toISOString(),
                     role: 'user',
                     email_verified: true,
-                    user_password: hashedPassword
+                    user_password: hashedPassword,
+                    phone: phone || null
                 }
             ])
             .select();
 
         if (userError) {
             return res.status(400).json({ error: 'Erreur base de données: ' + userError.message });
+        }
+
+        if (affiliate_code) {
+            await fetch('https://backend-s05x.onrender.com/api/track-affiliate-signup', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    user_id: userData[0].id,
+                    user_email: email,
+                    affiliate_code: affiliate_code
+                })
+            });
         }
 
         const token = jwt.sign(
@@ -171,12 +184,13 @@ app.post('/api/auth/register', async (req, res) => {
 
         res.json({ 
             success: true,
-            message: 'Utilisateur créé avec essai gratuit de 14 jours',
+            message: 'Utilisateur créé',
             token: token,
             user: {
                 id: userData[0].id,
                 email: email,
                 name: userName,
+                phone: phone || null,
                 role: 'user',
                 subscription_type: 'trial',
                 trial_ends_at: trialEnd.toISOString()
