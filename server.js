@@ -3326,6 +3326,195 @@ app.get('/api/affiliate/:influencer_id/monthly-stats', requireAdmin, async (req,
   }
 });
 
+app.post('/api/subscription/initiate-payment', requireAuth, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const { amount, subscription_type, months = 1 } = req.body;
+    
+    const { data: userData, error: userError } = await supabase
+      .from('users')
+      .select('email, full_name, phone')
+      .eq('id', userId)
+      .single();
+    
+    if (userError) throw userError;
+    
+    const naboopayPayload = {
+      amount: amount * 100,
+      currency: "XOF",
+      description: `Abonnement ${subscription_type} - ${months} mois`,
+      customer_email: userData.email,
+      customer_name: userData.full_name,
+      customer_phone_number: userData.phone || '770000000',
+      return_url: "https://samaboutiksn.netlify.app/dashboard?payment=callback",
+      cancel_url: "https://samaboutiksn.netlify.app/dashboard?payment=cancel",
+      webhook_url: "https://backend-s05x.onrender.com/api/webhooks/naboopay",
+      metadata: {
+        user_id: userId,
+        subscription_type: subscription_type,
+        months: months
+      }
+    };
+    
+    const naboopayResponse = await fetch('https://api.naboostart.com/v1/payments/initiate', {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer naboo-520d304a-a41f-4791-b152-d156716ca129.24ed6ed2-4904-4aea-a6de-41b1eabf135c',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(naboopayPayload)
+    });
+    
+    const paymentData = await naboopayResponse.json();
+    
+    if (!paymentData.success) {
+      throw new Error(paymentData.message || 'Erreur NabooPay');
+    }
+    
+    const { data: transaction, error: txError } = await supabase
+      .from('payment_transactions')
+      .insert([{
+        user_id: userId,
+        amount: amount,
+        status: 'pending',
+        payment_method: 'naboopay',
+        naboopay_payment_id: paymentData.data.payment_id,
+        naboopay_checkout_url: paymentData.data.payment_url,
+        subscription_type: subscription_type,
+        subscription_months: months,
+        metadata: naboopayPayload.metadata
+      }])
+      .select();
+    
+    if (txError) throw txError;
+    
+    res.json({
+      success: true,
+      checkout_url: paymentData.data.payment_url,
+      payment_id: paymentData.data.payment_id,
+      transaction_id: transaction[0].id
+    });
+    
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/webhooks/naboopay', async (req, res) => {
+  try {
+    const { event, data } = req.body;
+    
+    if (event === 'payment.success') {
+      const paymentId = data.payment_id;
+      
+      const { data: transaction, error: txError } = await supabase
+        .from('payment_transactions')
+        .select('*')
+        .eq('naboopay_payment_id', paymentId)
+        .single();
+      
+      if (txError || !transaction) {
+        return res.status(404).json({ error: 'Transaction non trouvée' });
+      }
+      
+      if (transaction.status === 'completed') {
+        return res.json({ success: true, message: 'Déjà traité' });
+      }
+      
+      await supabase
+        .from('payment_transactions')
+        .update({ 
+          status: 'completed',
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', transaction.id);
+      
+      const subscriptionEnd = new Date();
+      subscriptionEnd.setMonth(subscriptionEnd.getMonth() + transaction.subscription_months);
+      
+      await supabase
+        .from('users')
+        .update({
+          subscription_type: 'premium',
+          subscription_end_date: subscriptionEnd.toISOString(),
+          is_premium: true,
+          activated_at: new Date().toISOString()
+        })
+        .eq('id', transaction.user_id);
+      
+      if (transaction.user_id) {
+        await fetch('https://backend-s05x.onrender.com/api/track-affiliate-premium', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            user_id: transaction.user_id,
+            subscription_amount: transaction.amount
+          })
+        });
+      }
+    }
+    
+    res.json({ success: true });
+    
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/subscription/payment-status/:transaction_id', requireAuth, async (req, res) => {
+  try {
+    const { transaction_id } = req.params;
+    const userId = req.user.userId;
+    
+    const { data: transaction, error } = await supabase
+      .from('payment_transactions')
+      .select('*')
+      .eq('id', transaction_id)
+      .eq('user_id', userId)
+      .single();
+    
+    if (error) throw error;
+    
+    res.json({
+      success: true,
+      transaction: transaction,
+      is_completed: transaction.status === 'completed'
+    });
+    
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/payment/callback', async (req, res) => {
+  try {
+    const { transaction_id } = req.query;
+    
+    if (!transaction_id) {
+      return res.redirect('https://samaboutiksn.netlify.app/dashboard?payment=error');
+    }
+    
+    const { data: transaction, error } = await supabase
+      .from('payment_transactions')
+      .select('status, user_id')
+      .eq('id', transaction_id)
+      .single();
+    
+    if (error || !transaction) {
+      return res.redirect('https://samaboutiksn.netlify.app/dashboard?payment=error');
+    }
+    
+    if (transaction.status === 'completed') {
+      return res.redirect('https://samaboutiksn.netlify.app/dashboard?payment=success');
+    } else {
+      return res.redirect('https://samaboutiksn.netlify.app/dashboard?payment=pending');
+    }
+    
+  } catch (error) {
+    res.redirect('https://samaboutiksn.netlify.app/dashboard?payment=error');
+  }
+});
+
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`Serveur demarre sur le port ${PORT}`);
 });
