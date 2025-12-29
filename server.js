@@ -3623,6 +3623,67 @@ app.get('/api/test-http', async (req, res) => {
   }
 });
 
+app.get('/api/test-naboopay-headers', async (req, res) => {
+  try {
+    const tests = [];
+    
+    // Test 1: Headers normaux (actuel)
+    try {
+      const response = await fetch('https://api.naboostart.com/v1/payments/initiate', {
+        method: 'POST',
+        headers: {
+          'Authorization': 'Bearer naboo-520d304a-a41f-4791-b152-d156716ca129.24ed6ed2-4904-4aea-a6de-41b1eabf135c',
+          'Content-Type': 'application/json',
+          'User-Agent': 'Mozilla/5.0 (Render)'
+        },
+        body: JSON.stringify({
+          amount: 1000,
+          currency: "XOF",
+          description: "Test"
+        })
+      });
+      tests.push({ name: 'Normal headers', status: response.status });
+    } catch (error) {
+      tests.push({ name: 'Normal headers', error: error.message });
+    }
+    
+    // Test 2: Sans User-Agent
+    try {
+      const response = await fetch('https://api.naboostart.com/v1/payments/initiate', {
+        method: 'POST',
+        headers: {
+          'Authorization': 'Bearer naboo-520d304a-a41f-4791-b152-d156716ca129.24ed6ed2-4904-4aea-a6de-41b1eabf135c',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          amount: 1000,
+          currency: "XOF",
+          description: "Test"
+        })
+      });
+      tests.push({ name: 'No User-Agent', status: response.status });
+    } catch (error) {
+      tests.push({ name: 'No User-Agent', error: error.message });
+    }
+    
+    // Test 3: Juste un GET pour voir la réponse
+    try {
+      const response = await fetch('https://api.naboostart.com', { method: 'GET' });
+      tests.push({ name: 'GET root', status: response.status });
+    } catch (error) {
+      tests.push({ name: 'GET root', error: error.message });
+    }
+    
+    res.json({
+      tests: tests,
+      conclusion: 'NabooPay API blocking requests from Render',
+      timestamp: new Date().toISOString()
+    });
+    
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
 
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`Serveur demarre sur le port ${PORT}`);
