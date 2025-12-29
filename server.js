@@ -3685,6 +3685,65 @@ app.get('/api/test-naboopay-headers', async (req, res) => {
   }
 });
 
+app.post('/api/subscription/initiate-payment-proxy', requireAuth, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const { amount, subscription_type, months = 1 } = req.body;
+    
+    const { data: userData, error: userError } = await supabase
+      .from('users')
+      .select('email, full_name, phone')
+      .eq('id', userId)
+      .single();
+    
+    if (userError) throw userError;
+    
+    // Crée la transaction d'abord
+    const { data: transaction, error: txError } = await supabase
+      .from('payment_transactions')
+      .insert([{
+        user_id: userId,
+        amount: amount,
+        status: 'pending',
+        payment_method: 'naboopay',
+        subscription_type: subscription_type,
+        subscription_months: months,
+        metadata: { user_id: userId }
+      }])
+      .select();
+    
+    if (txError) throw txError;
+    
+    // Retourne les données pour que le FRONTEND fasse l'appel
+    res.json({
+      success: true,
+      payment_data: {
+        amount: amount * 100,
+        currency: "XOF",
+        description: `Abonnement ${subscription_type} - ${months} mois`,
+        customer_email: userData.email,
+        customer_name: userData.full_name,
+        customer_phone_number: userData.phone || '770000000',
+        return_url: "https://samaboutiksn.netlify.app/payment/callback",
+        cancel_url: "https://samaboutiksn.netlify.app/dashboard?payment=cancel",
+        webhook_url: "https://backend-s05x.onrender.com/api/webhooks/naboopay",
+        metadata: {
+          user_id: userId,
+          transaction_id: transaction[0].id
+        }
+      },
+      api_endpoint: "https://api.naboostart.com/v1/payments/initiate",
+      api_key: "naboo-520d304a-a41f-4791-b152-d156716ca129.24ed6ed2-4904-4aea-a6de-41b1eabf135c",
+      transaction_id: transaction[0].id,
+      message: "Le frontend doit faire l'appel à NabooPay"
+    });
+    
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`Serveur demarre sur le port ${PORT}`);
 });
