@@ -3356,38 +3356,23 @@ app.post('/api/subscription/initiate-payment', requireAuth, async (req, res) => 
       }
     };
     
-    let naboopayResponse;
-    try {
-      naboopayResponse = await fetch('https://api.naboostart.com/v1/payments/initiate', {
-        method: 'POST',
-        headers: {
-          'Authorization': 'Bearer naboo-520d304a-a41f-4791-b152-d156716ca129.24ed6ed2-4904-4aea-a6de-41b1eabf135c',
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(naboopayPayload)
-      });
-    } catch (fetchError) {
-      return res.status(500).json({ 
-        error: 'Connection NabooPay failed',
-        details: fetchError.message 
-      });
-    }
+    const naboopayResponse = await fetch('https://api.naboostart.com/v1/payments/initiate', {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer naboo-520d304a-a41f-4791-b152-d156716ca129.24ed6ed2-4904-4aea-a6de-41b1eabf135c',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(naboopayPayload)
+    });
     
     if (!naboopayResponse.ok) {
-      const errorText = await naboopayResponse.text();
-      return res.status(naboopayResponse.status).json({ 
-        error: 'NabooPay API error',
-        status: naboopayResponse.status,
-        response: errorText
-      });
+      throw new Error(`NabooPay API: ${naboopayResponse.status}`);
     }
     
     const paymentData = await naboopayResponse.json();
     
     if (!paymentData.success) {
-      return res.status(400).json({ 
-        error: paymentData.message || 'NabooPay error'
-      });
+      throw new Error(paymentData.message || 'NabooPay error');
     }
     
     const { data: transaction, error: txError } = await supabase
