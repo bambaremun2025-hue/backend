@@ -3578,6 +3578,52 @@ app.get('/api/test-naboopay', async (req, res) => {
   }
 });
 
+app.get('/api/test-http', async (req, res) => {
+  try {
+    console.log('Testing basic HTTP connection...');
+    
+    // Test 1: Google (devrait toujours marcher)
+    const googleStart = Date.now();
+    const googleRes = await fetch('https://www.google.com', { timeout: 5000 });
+    const googleTime = Date.now() - googleStart;
+    
+    // Test 2: Une API publique
+    const publicApiStart = Date.now();
+    const apiRes = await fetch('https://httpbin.org/get', { timeout: 5000 });
+    const apiTime = Date.now() - publicApiStart;
+    
+    // Test 3: NabooPay sans auth (devrait donner 401)
+    const nabooStart = Date.now();
+    let nabooResult;
+    try {
+      const nabooRes = await fetch('https://api.naboostart.com/v1/payments/initiate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ test: true }),
+        timeout: 5000
+      });
+      nabooResult = { status: nabooRes.status, ok: nabooRes.ok };
+    } catch (nabooError) {
+      nabooResult = { error: nabooError.message };
+    }
+    const nabooTime = Date.now() - nabooStart;
+    
+    res.json({
+      google: { success: googleRes.ok, time: `${googleTime}ms` },
+      publicApi: { success: apiRes.ok, time: `${apiTime}ms` },
+      nabooPay: { result: nabooResult, time: `${nabooTime}ms` },
+      timestamp: new Date().toISOString()
+    });
+    
+  } catch (error) {
+    res.status(500).json({ 
+      error: error.message,
+      stack: error.stack?.split('\n').slice(0, 3)
+    });
+  }
+});
+
+
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`Serveur demarre sur le port ${PORT}`);
 });
