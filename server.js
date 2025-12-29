@@ -3527,3 +3527,36 @@ app.get('/api/payment/callback', async (req, res) => {
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`Serveur demarre sur le port ${PORT}`);
 });
+
+// TEST: Vérifie si fetch est disponible
+app.get('/api/test-fetch', (req, res) => {
+  try {
+    // Test 1: fetch global
+    const hasGlobalFetch = typeof fetch !== 'undefined';
+    
+    // Test 2: node-fetch module
+    let hasNodeFetch = false;
+    try {
+      require('node-fetch');
+      hasNodeFetch = true;
+    } catch (e) {}
+    
+    // Test 3: tente un fetch réel
+    let fetchTest = 'non testé';
+    if (hasGlobalFetch || hasNodeFetch) {
+      fetchTest = 'disponible';
+    }
+    
+    res.json({
+      hasGlobalFetch,
+      hasNodeFetch,
+      fetchTest,
+      nodeVersion: process.version,
+      isRender: !!process.env.RENDER,
+      timestamp: new Date().toISOString()
+    });
+    
+  } catch (error) {
+    res.json({ error: error.message });
+  }
+});
