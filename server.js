@@ -3522,3 +3522,4 @@ app.get('/api/payment/callback', async (req, res) => {
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`Serveur demarre sur le port ${PORT}`);
 });
+// Force redeploy Lun 29 déc 2025 07:40:06 CET
