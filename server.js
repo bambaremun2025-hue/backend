@@ -3346,7 +3346,7 @@ app.post('/api/subscription/initiate-payment', requireAuth, async (req, res) => 
       customer_email: userData.email,
       customer_name: userData.full_name,
       customer_phone_number: userData.phone || '770000000',
-      return_url: "https://samaboutiksn.netlify.app/dashboard?payment=callback",
+      return_url: "https://samaboutiksn.netlify.app/payment/callback",
       cancel_url: "https://samaboutiksn.netlify.app/dashboard?payment=cancel",
       webhook_url: "https://backend-s05x.onrender.com/api/webhooks/naboopay",
       metadata: {
@@ -3356,19 +3356,38 @@ app.post('/api/subscription/initiate-payment', requireAuth, async (req, res) => 
       }
     };
     
-    const naboopayResponse = await fetch('https://api.naboostart.com/v1/payments/initiate', {
-      method: 'POST',
-      headers: {
-        'Authorization': 'Bearer naboo-520d304a-a41f-4791-b152-d156716ca129.24ed6ed2-4904-4aea-a6de-41b1eabf135c',
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(naboopayPayload)
-    });
+    let naboopayResponse;
+    try {
+      naboopayResponse = await fetch('https://api.naboostart.com/v1/payments/initiate', {
+        method: 'POST',
+        headers: {
+          'Authorization': 'Bearer naboo-520d304a-a41f-4791-b152-d156716ca129.24ed6ed2-4904-4aea-a6de-41b1eabf135c',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(naboopayPayload)
+      });
+    } catch (fetchError) {
+      return res.status(500).json({ 
+        error: 'Connection NabooPay failed',
+        details: fetchError.message 
+      });
+    }
+    
+    if (!naboopayResponse.ok) {
+      const errorText = await naboopayResponse.text();
+      return res.status(naboopayResponse.status).json({ 
+        error: 'NabooPay API error',
+        status: naboopayResponse.status,
+        response: errorText
+      });
+    }
     
     const paymentData = await naboopayResponse.json();
     
     if (!paymentData.success) {
-      throw new Error(paymentData.message || 'Erreur NabooPay');
+      return res.status(400).json({ 
+        error: paymentData.message || 'NabooPay error'
+      });
     }
     
     const { data: transaction, error: txError } = await supabase
