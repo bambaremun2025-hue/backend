@@ -3524,40 +3524,62 @@ app.get('/api/payment/callback', async (req, res) => {
   }
 });
 
-app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Serveur demarre sur le port ${PORT}`);
-});
-
-// TEST: Vérifie si fetch est disponible
-app.get('/api/test-fetch', (req, res) => {
+app.get('/api/test-naboopay', async (req, res) => {
   try {
-    // Test 1: fetch global
-    const hasGlobalFetch = typeof fetch !== 'undefined';
+    console.log('🔍 Testing NabooPay API connection...');
     
-    // Test 2: node-fetch module
-    let hasNodeFetch = false;
+    const testPayload = {
+      amount: 1000,
+      currency: "XOF",
+      description: "Test API Connection",
+      customer_email: "test@example.com",
+      customer_name: "Test User",
+      customer_phone_number: "770000000",
+      return_url: "https://example.com/success",
+      cancel_url: "https://example.com/cancel"
+    };
+    
+    const startTime = Date.now();
+    const response = await fetch('https://api.naboostart.com/v1/payments/initiate', {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer naboo-520d304a-a41f-4791-b152-d156716ca129.24ed6ed2-4904-4aea-a6de-41b1eabf135c',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(testPayload)
+    });
+    
+    const responseTime = Date.now() - startTime;
+    const responseText = await response.text();
+    
+    let responseData;
     try {
-      require('node-fetch');
-      hasNodeFetch = true;
-    } catch (e) {}
-    
-    // Test 3: tente un fetch réel
-    let fetchTest = 'non testé';
-    if (hasGlobalFetch || hasNodeFetch) {
-      fetchTest = 'disponible';
+      responseData = JSON.parse(responseText);
+    } catch (e) {
+      responseData = { raw: responseText.substring(0, 200) };
     }
     
     res.json({
-      hasGlobalFetch,
-      hasNodeFetch,
-      fetchTest,
-      nodeVersion: process.version,
-      isRender: !!process.env.RENDER,
+      test: "NabooPay API Connection Test",
+      success: response.ok,
+      status: response.status,
+      responseTime: `${responseTime}ms`,
+      response: responseData,
       timestamp: new Date().toISOString()
     });
     
   } catch (error) {
-    res.json({ error: error.message });
+    console.error('❌ NabooPay test error:', error);
+    res.status(500).json({
+      error: error.message,
+      errorType: error.constructor.name,
+      timestamp: new Date().toISOString()
+    });
   }
 });
-// Trigger NabooPay test deploy
+EOF
+
+
+app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Serveur demarre sur le port ${PORT}`);
+});
