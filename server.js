@@ -1,3 +1,8 @@
+// Polyfill for fetch in Node.js < 18
+if (typeof fetch === 'undefined') {
+  global.fetch = require('node-fetch');
+  console.log('✅ node-fetch polyfill loaded');
+}
 const { createClient } = require('@supabase/supabase-js');
 const express = require('express');
 const cors = require('cors');
