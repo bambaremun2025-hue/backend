@@ -3577,8 +3577,6 @@ app.get('/api/test-naboopay', async (req, res) => {
     });
   }
 });
-EOF
-
 
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`Serveur demarre sur le port ${PORT}`);
