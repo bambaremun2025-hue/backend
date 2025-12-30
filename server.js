@@ -3810,6 +3810,32 @@ app.post('/api/subscription/initiate-payment-final', requireAuth, async (req, re
   }
 });
 
+app.get('/api/payment/status/:transaction_id', requireAuth, async (req, res) => {
+  try {
+    const { transaction_id } = req.params;
+    const userId = req.user.userId;
+    
+    const { data: transaction, error } = await supabase
+      .from('payment_transactions')
+      .select('*')
+      .eq('id', transaction_id)
+      .eq('user_id', userId)
+      .single();
+    
+    if (error) throw error;
+    
+    res.json({
+      status: transaction.status,
+      is_completed: transaction.status === 'completed',
+      checkout_url: transaction.naboopay_checkout_url,
+      created_at: transaction.created_at
+    });
+    
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`Serveur demarre sur le port ${PORT}`);
 });
