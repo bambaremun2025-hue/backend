@@ -3353,7 +3353,7 @@ app.post('/api/subscription/initiate-payment', requireAuth, async (req, res) => 
       customer_phone_number: userData.phone || '770000000',
       return_url: "https://samaboutiksn.netlify.app/payment/callback",
       cancel_url: "https://samaboutiksn.netlify.app/dashboard?payment=cancel",
-      webhook_url: "https://backend-s05x.onrender.com/api/webhooks/naboopay",
+      webhook_url: "https://backend-s05x.onrender.com/api/webhooks/naboostart",
       metadata: {
         user_id: userId,
         subscription_type: subscription_type,
