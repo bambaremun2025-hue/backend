@@ -3582,17 +3582,14 @@ app.get('/api/test-http', async (req, res) => {
   try {
     console.log('Testing basic HTTP connection...');
     
-    // Test 1: Google (devrait toujours marcher)
     const googleStart = Date.now();
     const googleRes = await fetch('https://www.google.com', { timeout: 5000 });
     const googleTime = Date.now() - googleStart;
-    
-    // Test 2: Une API publique
+  
     const publicApiStart = Date.now();
     const apiRes = await fetch('https://httpbin.org/get', { timeout: 5000 });
     const apiTime = Date.now() - publicApiStart;
-    
-    // Test 3: NabooPay sans auth (devrait donner 401)
+ 
     const nabooStart = Date.now();
     let nabooResult;
     try {
@@ -3626,8 +3623,7 @@ app.get('/api/test-http', async (req, res) => {
 app.get('/api/test-naboopay-headers', async (req, res) => {
   try {
     const tests = [];
-    
-    // Test 1: Headers normaux (actuel)
+   
     try {
       const response = await fetch('https://api.naboostart.com/v1/payments/initiate', {
         method: 'POST',
@@ -3646,8 +3642,7 @@ app.get('/api/test-naboopay-headers', async (req, res) => {
     } catch (error) {
       tests.push({ name: 'Normal headers', error: error.message });
     }
-    
-    // Test 2: Sans User-Agent
+  
     try {
       const response = await fetch('https://api.naboostart.com/v1/payments/initiate', {
         method: 'POST',
@@ -3666,7 +3661,6 @@ app.get('/api/test-naboopay-headers', async (req, res) => {
       tests.push({ name: 'No User-Agent', error: error.message });
     }
     
-    // Test 3: Juste un GET pour voir la réponse
     try {
       const response = await fetch('https://api.naboostart.com', { method: 'GET' });
       tests.push({ name: 'GET root', status: response.status });
@@ -3698,7 +3692,6 @@ app.post('/api/subscription/initiate-payment-proxy', requireAuth, async (req, re
     
     if (userError) throw userError;
     
-    // Crée la transaction d'abord
     const { data: transaction, error: txError } = await supabase
       .from('payment_transactions')
       .insert([{
@@ -3714,7 +3707,6 @@ app.post('/api/subscription/initiate-payment-proxy', requireAuth, async (req, re
     
     if (txError) throw txError;
     
-    // Retourne les données pour que le FRONTEND fasse l'appel
     res.json({
       success: true,
       payment_data: {
