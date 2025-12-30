@@ -3417,29 +3417,61 @@ app.post('/api/webhooks/naboostart', async (req, res) => {
     if (event === 'payment.success') {
       const paymentId = data.payment_id;
       
-      const { data: transaction, error: txError } = await supabase
+      let { data: transaction, error: txError } = await supabase
         .from('payment_transactions')
         .select('*')
         .eq('naboopay_payment_id', paymentId)
         .single();
-      
+ 
       if (txError || !transaction) {
-        console.log('❌ Transaction non trouvée, fallback...');
+        console.log('Essaie par transaction_id...');
+        const { data: txByTransactionId } = await supabase
+          .from('payment_transactions')
+          .select('*')
+          .eq('id', paymentId)
+          .single();
+        
+        if (txByTransactionId) {
+          transaction = txByTransactionId;
+          txError = null;
+        }
+      }
+   
+      if (txError || !transaction) {
+        console.log('Essaie par metadata...');
+        const { data: allPending } = await supabase
+          .from('payment_transactions')
+          .select('*')
+          .eq('status', 'pending');
+        
+        for (const tx of allPending) {
+          if (tx.metadata && 
+             (tx.metadata.transaction_id === paymentId || 
+              tx.metadata.user_id === data.customer_email)) {
+            transaction = tx;
+            break;
+          }
+        }
+      }
+      
+      if (!transaction) {
+        console.log('❌ Transaction non trouvée pour payment_id:', paymentId);
         return res.json({ success: false, message: 'Transaction non trouvée' });
       }
       
       if (transaction.status === 'completed') {
         return res.json({ success: true, message: 'Déjà traité' });
       }
-      
+     
       await supabase
         .from('payment_transactions')
         .update({ 
           status: 'completed',
+          naboopay_payment_id: paymentId,
           updated_at: new Date().toISOString()
         })
         .eq('id', transaction.id);
-      
+     
       const subscriptionEnd = new Date();
       subscriptionEnd.setMonth(subscriptionEnd.getMonth() + transaction.subscription_months);
       
