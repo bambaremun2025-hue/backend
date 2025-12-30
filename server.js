@@ -3876,6 +3876,19 @@ app.post('/api/payment/confirm/:transaction_id', requireAuth, async (req, res) =
   }
 });
 
+app.get('/api/admin/payments-detailed', requireAdmin, async (req, res) => {
+  const { data, error } = await supabase
+    .from('payment_transactions')
+    .select(`
+      id, amount, status, created_at, 
+      subscription_type, subscription_months,
+      users!inner (email, full_name, phone, shop_name)
+    `)
+    .order('created_at', { ascending: false });
+  
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data || []);
+});
 
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`Serveur demarre sur le port ${PORT}`);
