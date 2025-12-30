@@ -3361,7 +3361,7 @@ app.post('/api/subscription/initiate-payment', requireAuth, async (req, res) => 
       }
     };
     
-    const naboopayResponse = await fetch('https://api.naboostart.com/v1/payments/initiate', {
+const naboopayResponse = await fetch('https://api.naboostart.com/v1/payments/initiate', {
       method: 'POST',
       headers: {
         'Authorization': 'Bearer naboo-520d304a-a41f-4791-b152-d156716ca129.24ed6ed2-4904-4aea-a6de-41b1eabf135c',
