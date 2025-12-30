@@ -3836,6 +3836,47 @@ app.get('/api/payment/status/:transaction_id', requireAuth, async (req, res) => 
   }
 });
 
+app.post('/api/payment/confirm/:transaction_id', requireAuth, async (req, res) => {
+  try {
+    const { transaction_id } = req.params;
+    const userId = req.user.userId;
+    
+    const { data: transaction, error } = await supabase
+      .from('payment_transactions')
+      .update({
+        status: 'completed',
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', transaction_id)
+      .eq('user_id', userId)
+      .select();
+    
+    if (error) throw error;
+   
+    const subscriptionEnd = new Date();
+    subscriptionEnd.setMonth(subscriptionEnd.getMonth() + 1);
+    
+    await supabase
+      .from('users')
+      .update({
+        subscription_type: 'premium',
+        subscription_end_date: subscriptionEnd.toISOString(),
+        is_premium: true,
+        activated_at: new Date().toISOString()
+      })
+      .eq('id', userId);
+    
+    res.json({
+      success: true,
+      message: 'Abonnement activé avec succès !'
+    });
+    
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`Serveur demarre sur le port ${PORT}`);
 });
