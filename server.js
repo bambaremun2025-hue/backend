@@ -3411,6 +3411,7 @@ const naboopayResponse = await fetch('https://api.naboostart.com/v1/payments/ini
 
 app.post('/api/webhooks/naboostart', async (req, res) => {
   try {
+    console.log('🔔 Webhook NabooStart reçu');
     const { event, data } = req.body;
     
     if (event === 'payment.success') {
@@ -3423,7 +3424,8 @@ app.post('/api/webhooks/naboostart', async (req, res) => {
         .single();
       
       if (txError || !transaction) {
-        return res.status(404).json({ error: 'Transaction non trouvée' });
+        console.log('❌ Transaction non trouvée, fallback...');
+        return res.json({ success: false, message: 'Transaction non trouvée' });
       }
       
       if (transaction.status === 'completed') {
@@ -3451,21 +3453,13 @@ app.post('/api/webhooks/naboostart', async (req, res) => {
         })
         .eq('id', transaction.user_id);
       
-      if (transaction.user_id) {
-        await fetch('https://backend-s05x.onrender.com/api/track-affiliate-premium', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            user_id: transaction.user_id,
-            subscription_amount: transaction.amount
-          })
-        });
-      }
+      console.log(`✅ Abonnement activé pour user: ${transaction.user_id}`);
     }
     
     res.json({ success: true });
     
   } catch (error) {
+    console.error('💥 Webhook error:', error);
     res.status(500).json({ error: error.message });
   }
 });
