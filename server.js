@@ -642,7 +642,7 @@ app.post('/api/payments/naboostart-initiate', async (req, res) => {
         const naboopyResponse = await fetch('https://api.naboostart.com/v1/payments/initiate', {
             method: 'POST',
             headers: {
-                'Authorization': 'Bearer naboo-520d304a-a41f-4791-b152-d156716ca129.24ed6ed2-4904-4aea-a6de-41b1eabf135c',
+                'Authorization': 'Bearer naboo-a171fa06-f159-43c3-a915-026fa1385a63.f0340275-3841-466b-a48d-aead55ac4323',
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify(naboopyPayload)
@@ -3364,7 +3364,7 @@ app.post('/api/subscription/initiate-payment', requireAuth, async (req, res) => 
 const naboopayResponse = await fetch('https://api.naboostart.com/v1/payments/initiate', {
       method: 'POST',
       headers: {
-        'Authorization': 'Bearer naboo-520d304a-a41f-4791-b152-d156716ca129.24ed6ed2-4904-4aea-a6de-41b1eabf135c',
+        'Authorization': 'Bearer naboo-a171fa06-f159-43c3-a915-026fa1385a63.f0340275-3841-466b-a48d-aead55ac4323',
         'Content-Type': 'application/json'
       },
       body: JSON.stringify(naboopayPayload)
@@ -3543,7 +3543,7 @@ app.get('/api/test-naboopay', async (req, res) => {
     const response = await fetch('https://api.naboostart.com/v1/payments/initiate', {
       method: 'POST',
       headers: {
-        'Authorization': 'Bearer naboo-520d304a-a41f-4791-b152-d156716ca129.24ed6ed2-4904-4aea-a6de-41b1eabf135c',
+        'Authorization': 'Bearer naboo-a171fa06-f159-43c3-a915-026fa1385a63.f0340275-3841-466b-a48d-aead55ac4323',
         'Content-Type': 'application/json'
       },
       body: JSON.stringify(testPayload)
@@ -3632,7 +3632,7 @@ app.get('/api/test-naboopay-headers', async (req, res) => {
       const response = await fetch('https://api.naboostart.com/v1/payments/initiate', {
         method: 'POST',
         headers: {
-          'Authorization': 'Bearer naboo-520d304a-a41f-4791-b152-d156716ca129.24ed6ed2-4904-4aea-a6de-41b1eabf135c',
+          'Authorization': 'Bearer naboo-a171fa06-f159-43c3-a915-026fa1385a63.f0340275-3841-466b-a48d-aead55ac4323',
           'Content-Type': 'application/json',
           'User-Agent': 'Mozilla/5.0 (Render)'
         },
@@ -3652,7 +3652,7 @@ app.get('/api/test-naboopay-headers', async (req, res) => {
       const response = await fetch('https://api.naboostart.com/v1/payments/initiate', {
         method: 'POST',
         headers: {
-          'Authorization': 'Bearer naboo-520d304a-a41f-4791-b152-d156716ca129.24ed6ed2-4904-4aea-a6de-41b1eabf135c',
+          'Authorization': 'Bearer naboo-a171fa06-f159-43c3-a915-026fa1385a63.f0340275-3841-466b-a48d-aead55ac4323',
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
@@ -3733,7 +3733,7 @@ app.post('/api/subscription/initiate-payment-proxy', requireAuth, async (req, re
         }
       },
       api_endpoint: "https://api.naboostart.com/v1/payments/initiate",
-      api_key: "naboo-520d304a-a41f-4791-b152-d156716ca129.24ed6ed2-4904-4aea-a6de-41b1eabf135c",
+      api_key: "naboo-a171fa06-f159-43c3-a915-026fa1385a63.f0340275-3841-466b-a48d-aead55ac4323",
       transaction_id: transaction[0].id,
       message: "Le frontend doit faire l'appel à NabooPay"
     });
