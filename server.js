@@ -3409,7 +3409,7 @@ const naboopayResponse = await fetch('https://api.naboostart.com/v1/payments/ini
   }
 });
 
-app.post('/api/webhooks/naboopay', async (req, res) => {
+app.post('/api/webhooks/naboostart', async (req, res) => {
   try {
     const { event, data } = req.body;
     
@@ -3888,6 +3888,25 @@ app.get('/api/admin/payments-detailed', requireAdmin, async (req, res) => {
   
   if (error) return res.status(500).json({ error: error.message });
   res.json(data || []);
+});
+
+app.post('/api/admin/verify-payment/:transaction_id', requireAdmin, async (req, res) => {
+  const { transaction_id } = req.params;
+  
+  const { data: transaction } = await supabase
+    .from('payment_transactions')
+    .select('*, users(email)')
+    .eq('id', transaction_id)
+    .single();
+  
+  if (!transaction) return res.status(404).json({ error: 'Transaction non trouvée' });
+ 
+  await activateUserSubscription(transaction.user_id, transaction_id);
+  
+  res.json({ 
+    success: true, 
+    message: `Abonnement activé pour ${transaction.users.email}` 
+  });
 });
 
 app.listen(PORT, '0.0.0.0', () => {
