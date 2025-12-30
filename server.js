@@ -3726,7 +3726,7 @@ app.post('/api/subscription/initiate-payment-proxy', requireAuth, async (req, re
         customer_phone_number: userData.phone || '770000000',
         return_url: "https://samaboutiksn.netlify.app/payment/callback",
         cancel_url: "https://samaboutiksn.netlify.app/dashboard?payment=cancel",
-        webhook_url: "https://backend-s05x.onrender.com/api/webhooks/naboopay",
+        webhook_url: "https://backend-s05x.onrender.com/api/webhooks/naboostart",
         metadata: {
           user_id: userId,
           transaction_id: transaction[0].id
