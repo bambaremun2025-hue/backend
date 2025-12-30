@@ -3735,6 +3735,80 @@ app.post('/api/subscription/initiate-payment-proxy', requireAuth, async (req, re
   }
 });
 
+app.post('/api/subscription/initiate-payment-final', requireAuth, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const { amount, subscription_type, months = 1 } = req.body;
+    
+    console.log('🚀 Payment request:', { userId, amount, subscription_type });
+ 
+    const { data: userData, error: userError } = await supabase
+      .from('users')
+      .select('email, full_name, phone')
+      .eq('id', userId)
+      .single();
+    
+    if (userError) throw userError;
+
+    const baseUrl = 'https://checkout.naboopay.com/checkout-merchant';
+    const params = new URLSearchParams({
+      org: '69122c5fb9715e833a77efdb',
+      amount: (amount * 100).toString(),
+      currency: 'XOF',
+      description: `Abonnement ${subscription_type} - ${months} mois`,
+      customer_email: userData.email,
+      customer_name: userData.full_name || 'Client',
+      customer_phone: userData.phone || '770000000',
+      return_url: 'https://samaboutiksn.netlify.app/payment/callback',
+      cancel_url: 'https://samaboutiksn.netlify.app/dashboard?payment=cancel',
+      callback_url: 'https://backend-s05x.onrender.com/api/webhooks/naboostart',
+      metadata: JSON.stringify({
+        user_id: userId,
+        subscription_type: subscription_type,
+        months: months
+      })
+    });
+    
+    const checkoutUrl = `${baseUrl}?${params.toString()}`;
+    console.log('🔗 Checkout URL generated:', checkoutUrl);
+
+    const { data: transaction, error: txError } = await supabase
+      .from('payment_transactions')
+      .insert([{
+        user_id: userId,
+        amount: amount,
+        status: 'pending',
+        payment_method: 'naboopay',
+        naboopay_checkout_url: checkoutUrl,
+        subscription_type: subscription_type,
+        subscription_months: months,
+        metadata: {
+          user_id: userId,
+          checkout_generated: new Date().toISOString()
+        }
+      }])
+      .select();
+    
+    if (txError) throw txError;
+    
+    console.log('✅ Transaction created:', transaction[0].id);
+    
+    res.json({
+      success: true,
+      checkout_url: checkoutUrl,
+      transaction_id: transaction[0].id,
+      amount: amount,
+      message: 'Redirigez vers cette URL pour compléter le paiement'
+    });
+    
+  } catch (error) {
+    console.error('💥 Payment error:', error);
+    res.status(500).json({ 
+      error: error.message,
+      debug: 'Using direct checkout URL instead of NabooPay API'
+    });
+  }
+});
 
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`Serveur demarre sur le port ${PORT}`);
