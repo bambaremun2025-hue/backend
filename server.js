@@ -3124,6 +3124,20 @@ app.get('/api/affiliate/dashboard/:influencer_id', async (req, res) => {
   }
 });
 
+app.get('/api/affiliate/test-link', async (req, res) => {
+  try {
+    const { data: referrals } = await supabase
+      .from('affiliate_referrals')
+      .select('id, affiliate_name, influencer_id')
+      .limit(5);
+    
+    res.json({ referrals });
+    
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.get('/api/admin/affiliates', requireAdmin, async (req, res) => {
   try {
     const { data: influencers, error: infError } = await supabase
