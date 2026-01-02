@@ -2990,7 +2990,8 @@ app.post('/api/affiliate/calculate-recurring', requireAdmin, async (req, res) =>
       .select('*, affiliate_influencers(*), users!inner(*)')
       .eq('subscription_type', 'premium')
       .eq('users.is_premium', true)
-      .eq('users.subscription_type', 'premium');
+      .eq('users.subscription_type', 'premium')
+      .not('influencer_id', 'is', null);
     
     let totalCommissions = 0;
     
@@ -3003,7 +3004,7 @@ app.post('/api/affiliate/calculate-recurring', requireAdmin, async (req, res) =>
         .eq('commission_type', 'recurring')
         .single();
       
-      if (!existing) {
+      if (!existing && referral.influencer_id) {
         const commissionAmount = referral.subscription_amount * (referral.affiliate_influencers.commission_recurring / 100);
         
         await supabase
@@ -3034,6 +3035,41 @@ app.post('/api/affiliate/calculate-recurring', requireAdmin, async (req, res) =>
       success: true,
       total: totalCommissions
     });
+    
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/affiliate/link-old-referrals', requireAdmin, async (req, res) => {
+  try {
+    const { data: referrals } = await supabase
+      .from('affiliate_referrals')
+      .select('id, affiliate_name')
+      .is('influencer_id', null);
+    
+    let linked = 0;
+    
+    for (const referral of referrals) {
+      if (referral.affiliate_name) {
+        const { data: influencer } = await supabase
+          .from('affiliate_influencers')
+          .select('id')
+          .eq('unique_code', referral.affiliate_name)
+          .single();
+        
+        if (influencer) {
+          await supabase
+            .from('affiliate_referrals')
+            .update({ influencer_id: influencer.id })
+            .eq('id', referral.id);
+          
+          linked++;
+        }
+      }
+    }
+    
+    res.json({ success: true, linked: linked });
     
   } catch (error) {
     res.status(500).json({ error: error.message });
