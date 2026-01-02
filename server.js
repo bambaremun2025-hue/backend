@@ -2900,9 +2900,23 @@ app.post('/api/track-affiliate-signup', async (req, res) => {
   try {
     const { user_id, user_email, affiliate_code } = req.body;
     
+    if (!user_id || !user_email || !affiliate_code) {
+      return res.json({ success: false });
+    }
+    
+    const { data: userExists } = await supabase
+      .from('users')
+      .select('id')
+      .eq('id', user_id)
+      .single();
+    
+    if (!userExists) {
+      return res.json({ success: false });
+    }
+    
     const { data: influencer } = await supabase
       .from('affiliate_influencers')
-      .select('*')
+      .select('id, unique_code')
       .eq('unique_code', affiliate_code)
       .single();
     
@@ -2910,14 +2924,17 @@ app.post('/api/track-affiliate-signup', async (req, res) => {
       return res.json({ success: false });
     }
     
-    const { data: referral } = await supabase
+    const { data: referral, error } = await supabase
       .from('affiliate_referrals')
       .insert([{
-        influencer_id: influencer.id,
+        affiliate_name: affiliate_code,
         referred_user_id: user_id,
-        status: 'pending'
+        referred_email: user_email,
+        status: 'tracked'
       }])
       .select();
+    
+    if (error) throw error;
     
     res.json({
       success: true,
@@ -3324,6 +3341,25 @@ app.get('/api/affiliate/:influencer_id/monthly-stats', requireAdmin, async (req,
     res.json({
       success: true,
       monthlyStats: sortedStats
+    });
+    
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/admin/clean-affiliate-referrals', requireAdmin, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('affiliate_referrals')
+      .delete()
+      .is('referred_user_id', null);
+    
+    if (error) throw error;
+    
+    res.json({
+      success: true,
+      deleted_count: data?.length || 0
     });
     
   } catch (error) {
