@@ -2904,16 +2904,6 @@ app.post('/api/track-affiliate-signup', async (req, res) => {
       return res.json({ success: false });
     }
     
-    const { data: userExists } = await supabase
-      .from('users')
-      .select('id')
-      .eq('id', user_id)
-      .single();
-    
-    if (!userExists) {
-      return res.json({ success: false });
-    }
-    
     const { data: influencer } = await supabase
       .from('affiliate_influencers')
       .select('id, unique_code')
@@ -2928,6 +2918,7 @@ app.post('/api/track-affiliate-signup', async (req, res) => {
       .from('affiliate_referrals')
       .insert([{
         affiliate_name: affiliate_code,
+        influencer_id: influencer.id,
         referred_user_id: user_id,
         referred_email: user_email,
         status: 'tracked'
