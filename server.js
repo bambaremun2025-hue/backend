@@ -2865,7 +2865,10 @@ app.post('/api/admin/users/bulk-delete', requireAdmin, async (req, res) => {
 
 app.post('/api/affiliate/register', requireAdmin, async (req, res) => {
   try {
-    const { name, email, phone, social_media } = req.body;
+    const { name, email, phone, social_media, commission_first_month, commission_recurring } = req.body;
+    
+    const firstMonthCommission = commission_first_month || 40.00;
+    const recurringCommission = commission_recurring || 20.00;
     
     const uniqueCode = `SAMA_${Math.random().toString(36).substr(2, 8).toUpperCase()}`;
     const affiliateLink = `https://samaboutiksn.netlify.app/signup?affiliate=${uniqueCode}`;
@@ -2879,8 +2882,11 @@ app.post('/api/affiliate/register', requireAdmin, async (req, res) => {
         social_media,
         unique_code: uniqueCode,
         affiliate_link: affiliateLink,
-        commission_first_month: 40.00,
-        commission_recurring: 20.00
+        commission_first_month: firstMonthCommission,
+        commission_recurring: recurringCommission,
+        total_earnings: 0,
+        status: 'active',
+        user_id: req.user.userId
       }])
       .select();
     
@@ -2888,8 +2894,7 @@ app.post('/api/affiliate/register', requireAdmin, async (req, res) => {
     
     res.json({
       success: true,
-      influencer: data[0],
-      affiliate_link: affiliateLink
+      influencer: data[0]
     });
     
   } catch (error) {
@@ -2975,6 +2980,38 @@ app.post('/api/track-affiliate-premium', async (req, res) => {
     res.json({
       success: true,
       commission: commissionAmount
+    });
+    
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.put('/api/affiliate/:id', requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, email, phone, social_media, commission_first_month, commission_recurring, status } = req.body;
+    
+    const { data, error } = await supabase
+      .from('affiliate_influencers')
+      .update({
+        name,
+        email,
+        phone,
+        social_media,
+        commission_first_month,
+        commission_recurring,
+        status,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', id)
+      .select();
+    
+    if (error) throw error;
+    
+    res.json({
+      success: true,
+      influencer: data[0]
     });
     
   } catch (error) {
@@ -3165,6 +3202,88 @@ app.get('/api/affiliate/system-check', async (req, res) => {
   }
 });
 
+app.get('/api/affiliate/dashboard/:unique_code', async (req, res) => {
+  try {
+    const { unique_code } = req.params;
+    
+    const { data: influencer } = await supabase
+      .from('affiliate_influencers')
+      .select('*')
+      .eq('unique_code', unique_code)
+      .single();
+    
+    if (!influencer) {
+      return res.status(404).json({ error: 'Affilié non trouvé' });
+    }
+    
+    const { data: referrals } = await supabase
+      .from('affiliate_referrals')
+      .select('*, users(email, full_name, subscription_type, created_at)')
+      .eq('influencer_id', influencer.id)
+      .order('created_at', { ascending: false });
+    
+    const { count: totalClicks } = await supabase
+      .from('affiliate_clicks')
+      .select('*', { count: 'exact', head: true })
+      .eq('influencer_id', influencer.id);
+    
+    const { data: payments } = await supabase
+      .from('affiliate_payments')
+      .select('*')
+      .eq('influencer_id', influencer.id)
+      .order('created_at', { ascending: false });
+    
+    const stats = {
+      total_clicks: totalClicks || 0,
+      total_referrals: referrals?.length || 0,
+      active_referrals: referrals?.filter(r => r.users?.subscription_type === 'premium').length || 0,
+      trial_referrals: referrals?.filter(r => r.users?.subscription_type === 'trial').length || 0,
+      pending_commission: referrals
+        ?.filter(r => r.status === 'approved' && !r.paid_date)
+        .reduce((sum, r) => sum + (r.commission_amount || 0), 0) || 0,
+      total_paid: payments
+        ?.filter(p => p.status === 'completed')
+        .reduce((sum, p) => sum + (p.amount || 0), 0) || 0,
+      total_earned: influencer.total_earnings || 0
+    };
+    
+    res.json({
+      success: true,
+      influencer,
+      stats,
+      referrals: referrals || [],
+      payments: payments || []
+    });
+    
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/affiliate/public/:unique_code', async (req, res) => {
+  try {
+    const { unique_code } = req.params;
+    
+    const { data: influencer } = await supabase
+      .from('affiliate_influencers')
+      .select('name, unique_code, affiliate_link, total_earnings, status')
+      .eq('unique_code', unique_code)
+      .single();
+    
+    if (!influencer) {
+      return res.status(404).json({ error: 'Affilié non trouvé' });
+    }
+    
+    res.json({
+      success: true,
+      influencer,
+      dashboard_url: `https://samaboutiksn.netlify.app/affiliate-dashboard?code=${unique_code}`
+    });
+    
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
 
 app.get('/api/admin/affiliates', requireAdmin, async (req, res) => {
   try {
@@ -3431,6 +3550,34 @@ app.post('/api/admin/clean-affiliate-referrals', requireAdmin, async (req, res) 
       success: true,
       deleted_count: data?.length || 0
     });
+    
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete('/api/affiliate/:id', requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const { data: referrals } = await supabase
+      .from('affiliate_referrals')
+      .select('id')
+      .eq('influencer_id', id)
+      .limit(1);
+    
+    if (referrals && referrals.length > 0) {
+      return res.status(400).json({ error: 'Impossible de supprimer, références existantes' });
+    }
+    
+    const { error } = await supabase
+      .from('affiliate_influencers')
+      .delete()
+      .eq('id', id);
+    
+    if (error) throw error;
+    
+    res.json({ success: true });
     
   } catch (error) {
     res.status(500).json({ error: error.message });
