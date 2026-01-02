@@ -3138,6 +3138,34 @@ app.get('/api/affiliate/test-link', async (req, res) => {
   }
 });
 
+app.get('/api/affiliate/system-check', async (req, res) => {
+  try {
+    const { data: influencers } = await supabase
+      .from('affiliate_influencers')
+      .select('count');
+    
+    const { data: referrals } = await supabase
+      .from('affiliate_referrals')
+      .select('count');
+    
+    const { data: unlinked } = await supabase
+      .from('affiliate_referrals')
+      .select('count')
+      .is('influencer_id', null);
+    
+    res.json({
+      influencers: influencers?.[0]?.count || 0,
+      referrals: referrals?.[0]?.count || 0,
+      unlinked_referrals: unlinked?.[0]?.count || 0,
+      status: 'ok'
+    });
+    
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+
 app.get('/api/admin/affiliates', requireAdmin, async (req, res) => {
   try {
     const { data: influencers, error: infError } = await supabase
