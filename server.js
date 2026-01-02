@@ -2896,6 +2896,7 @@ app.post('/api/affiliate/register', requireAdmin, async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
+
 app.post('/api/track-affiliate-signup', async (req, res) => {
   try {
     const { user_id, user_email, affiliate_code } = req.body;
