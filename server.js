@@ -3206,14 +3206,14 @@ app.get('/api/affiliate/dashboard/:unique_code', async (req, res) => {
   try {
     const { unique_code } = req.params;
     
-    const { data: influencer } = await supabase
+    const { data: influencer, error: infError } = await supabase
       .from('affiliate_influencers')
       .select('*')
       .eq('unique_code', unique_code)
       .single();
     
-    if (!influencer) {
-      return res.status(404).json({ error: 'Affilié non trouvé' });
+    if (infError || !influencer) {
+      return res.status(404).json({ success: false, error: 'Affilié non trouvé' });
     }
     
     const { data: referrals } = await supabase
