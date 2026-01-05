@@ -3206,40 +3206,71 @@ app.get('/api/affiliate/dashboard/:unique_code', async (req, res) => {
   try {
     const { unique_code } = req.params;
     
-    const { data: influencer, error: infError } = await supabase
+    const { data: influencer, error } = await supabase
       .from('affiliate_influencers')
-      .select('*')
+      .select('name, unique_code, status, total_earnings')
       .eq('unique_code', unique_code)
       .single();
     
-    if (infError || !influencer) {
+    if (error || !influencer) {
+      return res.status(404).json({ success: false, error: 'Affilié non trouvé' });
+    }
+    
+    res.json({
+      success: true,
+      influencer,
+      stats: {
+        total_referrals: 0,
+        total_earned: influencer.total_earnings || 0
+      },
+      referrals: [],
+      payments: []
+    });
+    
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/affiliate/dashboard/:unique_code', async (req, res) => {
+  try {
+    const { unique_code } = req.params;
+    
+    const { data: influencer, error } = await supabase
+      .from('affiliate_influencers')
+      .select('name, unique_code, status, total_earnings')
+      .eq('unique_code', unique_code)
+      .single();
+    
+    if (error) throw error;
+    
+    if (!influencer) {
       return res.status(404).json({ success: false, error: 'Affilié non trouvé' });
     }
     
     const { data: referrals } = await supabase
       .from('affiliate_referrals')
-      .select('*, users(email, full_name, subscription_type, created_at)')
-      .eq('influencer_id', influencer.id)
-      .order('created_at', { ascending: false });
-    
-    const { count: totalClicks } = await supabase
-      .from('affiliate_clicks')
-      .select('*', { count: 'exact', head: true })
-      .eq('influencer_id', influencer.id);
+      .select('id, status, commission_amount')
+      .eq('influencer_id', (await supabase
+        .from('affiliate_influencers')
+        .select('id')
+        .eq('unique_code', unique_code)
+        .single()).data.id);
     
     const { data: payments } = await supabase
       .from('affiliate_payments')
-      .select('*')
-      .eq('influencer_id', influencer.id)
-      .order('created_at', { ascending: false });
+      .select('amount, status')
+      .eq('influencer_id', (await supabase
+        .from('affiliate_influencers')
+        .select('id')
+        .eq('unique_code', unique_code)
+        .single()).data.id);
     
     const stats = {
-      total_clicks: totalClicks || 0,
       total_referrals: referrals?.length || 0,
-      active_referrals: referrals?.filter(r => r.users?.subscription_type === 'premium').length || 0,
-      trial_referrals: referrals?.filter(r => r.users?.subscription_type === 'trial').length || 0,
+      active_referrals: referrals?.filter(r => r.status === 'approved').length || 0,
       pending_commission: referrals
-        ?.filter(r => r.status === 'approved' && !r.paid_date)
+        ?.filter(r => r.status === 'approved')
         .reduce((sum, r) => sum + (r.commission_amount || 0), 0) || 0,
       total_paid: payments
         ?.filter(p => p.status === 'completed')
@@ -3253,31 +3284,6 @@ app.get('/api/affiliate/dashboard/:unique_code', async (req, res) => {
       stats,
       referrals: referrals || [],
       payments: payments || []
-    });
-    
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.get('/api/affiliate/public/:unique_code', async (req, res) => {
-  try {
-    const { unique_code } = req.params;
-    
-    const { data: influencer } = await supabase
-      .from('affiliate_influencers')
-      .select('name, unique_code, affiliate_link, total_earnings, status')
-      .eq('unique_code', unique_code)
-      .single();
-    
-    if (!influencer) {
-      return res.status(404).json({ error: 'Affilié non trouvé' });
-    }
-    
-    res.json({
-      success: true,
-      influencer,
-      dashboard_url: `https://samaboutiksn.netlify.app/affiliate-dashboard?code=${unique_code}`
     });
     
   } catch (error) {
