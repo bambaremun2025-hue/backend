@@ -3236,35 +3236,35 @@ app.get('/api/affiliate/dashboard/:unique_code', async (req, res) => {
   try {
     const { unique_code } = req.params;
     
-    const { data: influencer, error } = await supabase
+    const { data, error } = await supabase
       .from('affiliate_influencers')
-      .select('name, unique_code, status, total_earnings')
+      .select('name, unique_code, status, total_earnings, affiliate_link')
       .eq('unique_code', unique_code)
       .single();
     
     if (error) throw error;
     
-    if (!influencer) {
+    if (!data) {
       return res.status(404).json({ success: false, error: 'Affilié non trouvé' });
     }
+    
+    const influencerIdResult = await supabase
+      .from('affiliate_influencers')
+      .select('id')
+      .eq('unique_code', unique_code)
+      .single();
+    
+    const influencerId = influencerIdResult.data?.id;
     
     const { data: referrals } = await supabase
       .from('affiliate_referrals')
       .select('id, status, commission_amount')
-      .eq('influencer_id', (await supabase
-        .from('affiliate_influencers')
-        .select('id')
-        .eq('unique_code', unique_code)
-        .single()).data.id);
+      .eq('influencer_id', influencerId);
     
     const { data: payments } = await supabase
       .from('affiliate_payments')
       .select('amount, status')
-      .eq('influencer_id', (await supabase
-        .from('affiliate_influencers')
-        .select('id')
-        .eq('unique_code', unique_code)
-        .single()).data.id);
+      .eq('influencer_id', influencerId);
     
     const stats = {
       total_referrals: referrals?.length || 0,
@@ -3275,12 +3275,15 @@ app.get('/api/affiliate/dashboard/:unique_code', async (req, res) => {
       total_paid: payments
         ?.filter(p => p.status === 'completed')
         .reduce((sum, p) => sum + (p.amount || 0), 0) || 0,
-      total_earned: influencer.total_earnings || 0
+      total_earned: data.total_earnings || 0
     };
     
     res.json({
       success: true,
-      influencer,
+      name: data.name,
+      status: data.status,
+      unique_code: data.unique_code,
+      affiliate_link: data.affiliate_link,
       stats,
       referrals: referrals || [],
       payments: payments || []
