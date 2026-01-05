@@ -3206,29 +3206,86 @@ app.get('/api/affiliate/dashboard/:unique_code', async (req, res) => {
   try {
     const { unique_code } = req.params;
     
-    const { data: influencer, error } = await supabase
+    const { data, error } = await supabase
       .from('affiliate_influencers')
-      .select('name, unique_code, status, total_earnings')
+      .select('name, unique_code, status, affiliate_link, total_earnings')
       .eq('unique_code', unique_code)
       .single();
     
-    if (error || !influencer) {
-      return res.status(404).json({ success: false, error: 'Affilié non trouvé' });
+    if (error) {
+      console.error('Supabase error:', error);
+      return res.json({
+        success: true,
+        name: null,
+        status: null,
+        unique_code: unique_code,
+        affiliate_link: null,
+        stats: { total_referrals: 0, active_referrals: 0, pending_commission: 0, total_earned: 0 },
+        referrals: [],
+        payments: []
+      });
     }
+    
+    if (!data) {
+      return res.json({
+        success: true,
+        name: null,
+        status: null,
+        unique_code: unique_code,
+        affiliate_link: null,
+        stats: { total_referrals: 0, active_referrals: 0, pending_commission: 0, total_earned: 0 },
+        referrals: [],
+        payments: []
+      });
+    }
+    
+    const { data: influencerIdResult } = await supabase
+      .from('affiliate_influencers')
+      .select('id')
+      .eq('unique_code', unique_code)
+      .single();
+    
+    const influencerId = influencerIdResult?.id;
+    
+    const { data: referrals } = await supabase
+      .from('affiliate_referrals')
+      .select('*')
+      .eq('influencer_id', influencerId);
+    
+    const { data: payments } = await supabase
+      .from('affiliate_payments')
+      .select('*')
+      .eq('influencer_id', influencerId);
+    
+    const stats = {
+      total_referrals: referrals?.length || 0,
+      active_referrals: referrals?.filter(r => r.status === 'approved').length || 0,
+      pending_commission: referrals
+        ?.filter(r => r.status === 'approved')
+        .reduce((sum, r) => sum + (r.commission_amount || 0), 0) || 0,
+      total_paid: payments
+        ?.filter(p => p.status === 'completed')
+        .reduce((sum, p) => sum + (p.amount || 0), 0) || 0,
+      total_earned: data.total_earnings || 0
+    };
     
     res.json({
       success: true,
-      influencer,
-      stats: {
-        total_referrals: 0,
-        total_earned: influencer.total_earnings || 0
-      },
-      referrals: [],
-      payments: []
+      name: data.name,
+      status: data.status,
+      unique_code: data.unique_code,
+      affiliate_link: data.affiliate_link,
+      stats,
+      referrals: referrals || [],
+      payments: payments || []
     });
     
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('Server error:', error);
+    res.status(500).json({ 
+      success: false,
+      error: error.message 
+    });
   }
 });
 
