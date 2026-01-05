@@ -3119,53 +3119,32 @@ app.get('/api/affiliate/dashboard/:unique_code', async (req, res) => {
     
     const { data, error } = await supabase
       .from('affiliate_influencers')
-      .select('name, unique_code, status, affiliate_link, total_earnings')
+      .select('name, unique_code, status, total_earnings, affiliate_link')
       .eq('unique_code', unique_code)
       .single();
     
-    if (error) {
-      console.error('Supabase error:', error);
-      return res.json({
-        success: true,
-        name: null,
-        status: null,
-        unique_code: unique_code,
-        affiliate_link: null,
-        stats: { total_referrals: 0, active_referrals: 0, pending_commission: 0, total_earned: 0 },
-        referrals: [],
-        payments: []
-      });
-    }
+    if (error) throw error;
     
     if (!data) {
-      return res.json({
-        success: true,
-        name: null,
-        status: null,
-        unique_code: unique_code,
-        affiliate_link: null,
-        stats: { total_referrals: 0, active_referrals: 0, pending_commission: 0, total_earned: 0 },
-        referrals: [],
-        payments: []
-      });
+      return res.status(404).json({ success: false, error: 'Affilié non trouvé' });
     }
     
-    const { data: influencerIdResult } = await supabase
+    const influencerIdResult = await supabase
       .from('affiliate_influencers')
       .select('id')
       .eq('unique_code', unique_code)
       .single();
     
-    const influencerId = influencerIdResult?.id;
+    const influencerId = influencerIdResult.data?.id;
     
     const { data: referrals } = await supabase
       .from('affiliate_referrals')
-      .select('*')
+      .select('id, status, commission_amount')
       .eq('influencer_id', influencerId);
     
     const { data: payments } = await supabase
       .from('affiliate_payments')
-      .select('*')
+      .select('amount, status')
       .eq('influencer_id', influencerId);
     
     const stats = {
@@ -3192,13 +3171,10 @@ app.get('/api/affiliate/dashboard/:unique_code', async (req, res) => {
     });
     
   } catch (error) {
-    console.error('Server error:', error);
-    res.status(500).json({ 
-      success: false,
-      error: error.message 
-    });
+    res.status(500).json({ error: error.message });
   }
 });
+
 
 app.get('/api/admin/affiliates', requireAdmin, async (req, res) => {
   try {
