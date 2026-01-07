@@ -1284,6 +1284,46 @@ app.put('/api/products/:id', requireAuth, async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
+
+app.post('/api/products/:id/toggle', requireAuth, async (req, res) => {
+  try {
+    const productId = req.params.id;
+    const userId = req.user.userId;
+    
+    const { data: product } = await supabase
+      .from('products')
+      .select('active')
+      .eq('id', productId)
+      .eq('user_id', userId)
+      .single();
+    
+    if (!product) {
+      return res.status(404).json({ success: false });
+    }
+    
+    const newActive = !product.active;
+    
+    const { data: updated } = await supabase
+      .from('products')
+      .update({
+        active: newActive,
+        status: newActive ? 'active' : 'disabled',
+        disabled_at: newActive ? null : new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', productId)
+      .eq('user_id', userId)
+      .select();
+    
+    res.json({
+      success: true,
+      product: updated[0]
+    });
+    
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
 app.post('/api/fix-images', requireAuth, async (req, res) => {
   try {
     const userId = req.user.userId;
