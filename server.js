@@ -1048,43 +1048,50 @@ app.get('/api/public/shop/:user_id', async (req, res) => {
   }
 });
 app.get('/api/products', requireAuth, async (req, res) => {
-  const userId = req.user.userId; 
+  const userId = req.user.userId;
+  const { showAll } = req.query;
   
-  const { data: products, error } = await supabase
+  let query = supabase
     .from('products')
     .select('*')
-    .eq('user_id', userId)  
-    .order('created_at', { ascending: false });
-
+    .eq('user_id', userId);
+  
+  if (showAll !== 'true') {
+    query = query.eq('active', true);
+  }
+  
+  query = query.order('created_at', { ascending: false });
+  
+  const { data: products, error } = await query;
+  
   if (error) throw error;
   res.json(products || []);
 });
 
 app.post('/api/products', requireAuth, async (req, res) => {
-    try {
-        const userId = req.user.userId;
-        const { name, price, category, purchase_price, stock } = req.body; 
-        
-        const { data: product, error } = await supabase
-            .from('products')
-            .insert([
-                {
-                    user_id: userId,
-                    name,
-                    price,
-                    category,
-                    purchase_price: purchase_price || null,
-                    stock: stock || 0, 
-                    created_at: new Date().toISOString()
-                }
-            ])
-            .select();
-
-        if (error) throw error;
-        res.json({ success: true, product: product[0] });
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
+  try {
+    const userId = req.user.userId;
+    const { name, price, category, purchase_price, stock } = req.body;
+    
+    const { data: product } = await supabase
+      .from('products')
+      .insert([{
+        user_id: userId,
+        name,
+        price,
+        category,
+        purchase_price: purchase_price || null,
+        stock: stock || 0,
+        status: 'active',
+        active: true,
+        created_at: new Date().toISOString()
+      }])
+      .select();
+    
+    res.json({ success: true, product: product[0] });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 });
 app.post('/api/products/with-image', requireAuth, async (req, res) => {
     try {
@@ -1233,46 +1240,50 @@ app.post('/api/products/upload', requireAuth, async (req, res) => {
   }
 });
 app.put('/api/products/:id', requireAuth, async (req, res) => {
-    try {
-        const userId = req.user.userId;
-        const productId = req.params.id;
-        const { name, price, category, purchase_price, image_url, stock } = req.body;
-        
-        const updateData = {
-            name,
-            price,
-            category,
-            stock: stock || 0,
-            updated_at: new Date().toISOString()
-        };
+  try {
+    const userId = req.user.userId;
+    const productId = req.params.id;
+    const { name, price, category, purchase_price, image_url, stock, status, active } = req.body;
+    
+    const updateData = {
+      name,
+      price,
+      category,
+      stock: stock || 0,
+      updated_at: new Date().toISOString()
+    };
 
-        if (purchase_price !== undefined) {
-            updateData.purchase_price = purchase_price;
-        }
-        
-        if (image_url !== undefined) {
-            updateData.image_url = image_url;
-        }
-
-        const { data: product, error } = await supabase
-            .from('products')
-            .update(updateData)
-            .eq('id', productId)
-            .eq('user_id', userId)
-            .select();
-
-        if (error) throw error;
-        
-        if (!product || product.length === 0) {
-            return res.status(404).json({ error: 'Produit non trouvé' });
-        }
-
-        res.json({ success: true, product: product[0] });
-    } catch (error) {
-        res.status(500).json({ error: error.message });
+    if (status !== undefined) {
+      updateData.status = status;
+      updateData.active = status === 'active';
     }
+    
+    if (active !== undefined) {
+      updateData.active = active;
+      updateData.status = active ? 'active' : 'disabled';
+    }
+    
+    if (status === 'disabled' || active === false) {
+      updateData.disabled_at = new Date().toISOString();
+    }
+    
+    if (status === 'active' || active === true) {
+      updateData.disabled_at = null;
+    }
+    
+    const { data: updated } = await supabase
+      .from('products')
+      .update(updateData)
+      .eq('id', productId)
+      .eq('user_id', userId)
+      .select();
+    
+    res.json({ success: true, product: updated[0] });
+    
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 });
-
 app.post('/api/fix-images', requireAuth, async (req, res) => {
   try {
     const userId = req.user.userId;
