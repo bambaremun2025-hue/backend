@@ -2592,7 +2592,7 @@ app.get('/api/user/profile', requireAuth, async (req, res) => {
     
     const { data: user, error } = await supabase
       .from('users')
-      .select('id, email, full_name, shop_name, subscription_type, trial_ends_at, subscription_end_date, role, created_at')
+      .select('id, email, full_name, shop_name, subscription_type, trial_ends_at, subscription_end_date, role, created_at, phone') 
       .eq('id', userId)
       .single();
     
