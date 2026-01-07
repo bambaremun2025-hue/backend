@@ -948,6 +948,26 @@ app.post('/api/admin/cancel-subscription', requireAdmin, async (req, res) => {
     }
 });
 
+app.post('/api/admin/reset-limits/:user_id', requireAdmin, async (req, res) => {
+  try {
+    const { user_id } = req.params;
+    
+    await supabase
+      .from('users')
+      .update({
+        max_products: 5,
+        max_online_sales: 5,
+        features_unlocked: false
+      })
+      .eq('id', user_id);
+    
+    res.json({ success: true });
+    
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.get('/api/admin/subscription-details', requireAdmin, async (req, res) => {
     try {
         const { data: users, error } = await supabase
@@ -1597,6 +1617,31 @@ app.post('/api/sales', requireAuth, async (req, res) => {
 app.post('/api/physical-sales', requireAuth, async (req, res) => {
   try {
     const userId = req.user.userId;
+    
+    const { data: user } = await supabase
+      .from('users')
+      .select('subscription_type')
+      .eq('id', userId)
+      .single();
+    
+    if (user.subscription_type !== 'premium') {
+      const { count: physicalCount } = await supabase
+        .from('sales')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', userId)
+        .eq('sale_type', 'physical');
+      
+      if ((physicalCount || 0) >= 5) {
+        return res.status(403).json({
+          success: false,
+          error: 'Limite atteinte',
+          limit_reached: true,
+          current_count: physicalCount || 0,
+          max_allowed: 5
+        });
+      }
+    }
+    
     const { product_id, quantity, price } = req.body;
     
     const total_amount = price * quantity;
@@ -1649,11 +1694,6 @@ app.post('/api/physical-sales', requireAuth, async (req, res) => {
 
     if (updateError) throw updateError;
 
-    console.log('PHYSICAL SALE:', {
-      saleId: sale[0]?.id,
-      profit: sale[0]?.profit
-    });
-
     res.json({ 
       success: true, 
       sale: {
@@ -1671,7 +1711,6 @@ app.post('/api/physical-sales', requireAuth, async (req, res) => {
     });
 
   } catch (error) {
-    console.error('PHYSICAL SALE ERROR:', error);
     res.status(500).json({ 
       success: false,
       error: error.message 
@@ -2729,6 +2768,52 @@ app.get('/api/user/profile', requireAuth, async (req, res) => {
   }
 });
 
+app.get('/api/user/limits-status', requireAuth, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    
+    const { count: productCount } = await supabase
+      .from('products')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', userId);
+    
+    const { count: salesCount } = await supabase
+      .from('online_orders')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', userId);
+    
+    const { data: user } = await supabase
+      .from('users')
+      .select('subscription_type')
+      .eq('id', userId)
+      .single();
+    
+    const isPremium = user.subscription_type === 'premium';
+    
+    res.json({
+      is_premium: isPremium,
+      products: {
+        current: productCount || 0,
+        max: isPremium ? 99999 : 5,
+        limit_reached: !isPremium && (productCount || 0) >= 5
+      },
+      online_sales: {
+        current: salesCount || 0,
+        max: isPremium ? 99999 : 5,
+        limit_reached: !isPremium && (salesCount || 0) >= 5
+      },
+      analytics: {
+        allowed: isPremium,
+        locked: !isPremium
+      }
+    });
+    
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+
 app.get('/api/user/subscription-status', requireAuth, async (req, res) => {
   try {
     const userId = req.user.userId;
@@ -3731,20 +3816,18 @@ const naboopayResponse = await fetch('https://api.naboostart.com/v1/payments/ini
 
 app.post('/api/webhooks/naboostart', async (req, res) => {
   try {
-    console.log('🔔 Webhook NabooStart reçu');
     const { event, data } = req.body;
     
     if (event === 'payment.success') {
       const paymentId = data.payment_id;
       
-      let { data: transaction, error: txError } = await supabase
+      let { data: transaction } = await supabase
         .from('payment_transactions')
         .select('*')
         .eq('naboopay_payment_id', paymentId)
         .single();
  
-      if (txError || !transaction) {
-        console.log('Essaie par transaction_id...');
+      if (!transaction) {
         const { data: txByTransactionId } = await supabase
           .from('payment_transactions')
           .select('*')
@@ -3753,45 +3836,13 @@ app.post('/api/webhooks/naboostart', async (req, res) => {
         
         if (txByTransactionId) {
           transaction = txByTransactionId;
-          txError = null;
         }
       }
    
-      if (txError || !transaction) {
-        console.log('Essaie par metadata...');
-        const { data: allPending } = await supabase
-          .from('payment_transactions')
-          .select('*')
-          .eq('status', 'pending');
-        
-        for (const tx of allPending) {
-          if (tx.metadata && 
-             (tx.metadata.transaction_id === paymentId || 
-              tx.metadata.user_id === data.customer_email)) {
-            transaction = tx;
-            break;
-          }
-        }
-      }
-      
       if (!transaction) {
-        console.log('❌ Transaction non trouvée pour payment_id:', paymentId);
-        return res.json({ success: false, message: 'Transaction non trouvée' });
+        return res.json({ success: false });
       }
       
-      if (transaction.status === 'completed') {
-        return res.json({ success: true, message: 'Déjà traité' });
-      }
-     
-      await supabase
-        .from('payment_transactions')
-        .update({ 
-          status: 'completed',
-          naboopay_payment_id: paymentId,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', transaction.id);
-     
       const subscriptionEnd = new Date();
       subscriptionEnd.setMonth(subscriptionEnd.getMonth() + transaction.subscription_months);
       
@@ -3800,18 +3851,18 @@ app.post('/api/webhooks/naboostart', async (req, res) => {
         .update({
           subscription_type: 'premium',
           subscription_end_date: subscriptionEnd.toISOString(),
+          max_products: 99999,
+          max_online_sales: 99999,
+          features_unlocked: true,
           is_premium: true,
           activated_at: new Date().toISOString()
         })
         .eq('id', transaction.user_id);
-      
-      console.log(`✅ Abonnement activé pour user: ${transaction.user_id}`);
     }
     
     res.json({ success: true });
     
   } catch (error) {
-    console.error('💥 Webhook error:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -4221,6 +4272,8 @@ app.post('/api/payment/confirm/:transaction_id', requireAuth, async (req, res) =
     res.status(500).json({ error: error.message });
   }
 });
+
+
 
 app.get('/api/admin/payments-detailed', requireAdmin, async (req, res) => {
   const { data, error } = await supabase
