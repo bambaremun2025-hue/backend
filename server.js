@@ -1360,6 +1360,61 @@ app.post('/api/fix-all-images', requireAuth, async (req, res) => {
   }
 });
 
+app.delete('/api/products/:id', requireAuth, async (req, res) => {
+  try {
+    const productId = req.params.id;
+    const userId = req.user.userId;
+
+    const { data: product, error: checkError } = await supabase
+      .from('products')
+      .select('id')
+      .eq('id', productId)
+      .eq('user_id', userId)
+      .single();
+
+    if (checkError || !product) {
+      return res.status(404).json({ 
+        success: false, 
+        error: 'Produit non trouvé' 
+      });
+    }
+
+    const { data: sales } = await supabase
+      .from('sales')
+      .select('id')
+      .eq('product_id', productId)
+      .limit(1);
+
+    if (sales && sales.length > 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'Produit a des ventes associées'
+      });
+    }
+
+    const { error: deleteError } = await supabase
+      .from('products')
+      .delete()
+      .eq('id', productId)
+      .eq('user_id', userId);
+
+    if (deleteError) {
+      throw deleteError;
+    }
+
+    res.json({
+      success: true,
+      deletedId: productId
+    });
+
+  } catch (error) {
+    res.status(500).json({ 
+      success: false,
+      error: error.message 
+    });
+  }
+});
+
 app.get('/api/sales', requireAuth, async (req, res) => {
     try {
         const userId = req.user.userId;
