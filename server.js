@@ -1071,6 +1071,30 @@ app.get('/api/products', requireAuth, async (req, res) => {
 app.post('/api/products', requireAuth, async (req, res) => {
   try {
     const userId = req.user.userId;
+    
+    const { count: productCount } = await supabase
+      .from('products')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', userId);
+    
+    const { data: user } = await supabase
+      .from('users')
+      .select('max_products, subscription_type')
+      .eq('id', userId)
+      .single();
+    
+    const maxProducts = user.subscription_type === 'premium' ? 99999 : (user.max_products || 5);
+    
+    if (productCount >= maxProducts) {
+      return res.status(403).json({
+        success: false,
+        error: 'Limite produits atteinte',
+        limit_reached: true,
+        current_count: productCount,
+        max_allowed: maxProducts
+      });
+    }
+    
     const { name, price, category, purchase_price, stock } = req.body;
     
     const { data: product } = await supabase
@@ -1089,10 +1113,12 @@ app.post('/api/products', requireAuth, async (req, res) => {
       .select();
     
     res.json({ success: true, product: product[0] });
+    
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
+
 app.post('/api/products/with-image', requireAuth, async (req, res) => {
     try {
         const userId = req.user.userId;
@@ -2168,19 +2194,107 @@ app.get('/api/sales/combined-stats', async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
-app.get('/api/online-orders', requireAuth, async (req, res) => {
+app.get('/api/sales/combined-stats', async (req, res) => {
   try {
-    const userId = req.user.userId;
-
-    const { data: orders, error } = await supabase
-      .from('online_orders')
-      .select('*')
+    const authHeader = req.headers.authorization;
+    if (!authHeader) return res.status(401).json({ error: 'Token manquant' });
+    
+    const token = authHeader.split(' ')[1];
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'default-secret');
+    const userId = decoded.userId;
+    
+    const { data: user } = await supabase
+      .from('users')
+      .select('subscription_type')
+      .eq('id', userId)
+      .single();
+    
+    if (user.subscription_type !== 'premium') {
+      return res.status(403).json({
+        success: false,
+        error: 'Analytics premium uniquement',
+        locked: true
+      });
+    }
+    
+    const { data: physicalSales, error: physicalError } = await supabase
+      .from('sales')
+      .select('total_amount, profit, sale_date')
       .eq('user_id', userId)
-      .order('created_at', { ascending: false });
+      .eq('sale_type', 'physical');
 
-    if (error) throw error;
+    const { data: onlineOrders, error: ordersError } = await supabase
+      .from('online_orders')
+      .select('total_amount, items, status, created_at')
+      .eq('user_id', userId)
+      .in('status', ['confirmed', 'paid', 'delivered']);
 
-    res.json(orders || []);
+    if (physicalError || ordersError) {
+      throw physicalError || ordersError;
+    }
+
+    const physicalRevenue = (physicalSales || []).reduce((sum, sale) => sum + parseFloat(sale.total_amount || 0), 0);
+    const physicalProfit = (physicalSales || []).reduce((sum, sale) => sum + (parseFloat(sale.profit) || 0), 0);
+
+    let onlineRevenue = 0;
+    let onlineProfit = 0;
+    
+    (onlineOrders || []).forEach(order => {
+      onlineRevenue += parseFloat(order.total_amount || 0);
+      
+      (order.items || []).forEach(item => {
+        const profit = (item.unit_price || 0) - (item.purchase_price || 0);
+        onlineProfit += profit * (item.quantity || 0);
+      });
+    });
+
+    const today = new Date().toISOString().split('T')[0];
+    const thisMonth = new Date().getMonth();
+
+    const statsByPeriod = {
+      today: {
+        physical: (physicalSales || []).filter(s => s.sale_date && s.sale_date.startsWith(today)).length,
+        online: (onlineOrders || []).filter(o => o.created_at && o.created_at.startsWith(today)).length
+      },
+      thisMonth: {
+        physical: (physicalSales || []).filter(s => s.sale_date && new Date(s.sale_date).getMonth() === thisMonth).length,
+        online: (onlineOrders || []).filter(o => o.created_at && new Date(o.created_at).getMonth() === thisMonth).length
+      },
+      allTime: {
+        physical: (physicalSales || []).length,
+        online: (onlineOrders || []).length
+      }
+    };
+
+    res.json({
+      total_revenue: physicalRevenue + onlineRevenue,
+      total_profit: physicalProfit + onlineProfit,
+      total_orders: (physicalSales || []).length + (onlineOrders || []).length,
+      breakdown: {
+        physical: {
+          revenue: physicalRevenue,
+          profit: physicalProfit,
+          count: (physicalSales || []).length,
+          avg_order_value: (physicalSales || []).length > 0 ? physicalRevenue / (physicalSales || []).length : 0
+        },
+        online: {
+          revenue: onlineRevenue,
+          profit: onlineProfit,
+          count: (onlineOrders || []).length,
+          avg_order_value: (onlineOrders || []).length > 0 ? onlineRevenue / (onlineOrders || []).length : 0
+        }
+      },
+      comparison: {
+        revenue_ratio: onlineRevenue > 0 ? (physicalRevenue / onlineRevenue).toFixed(2) : 'N/A',
+        profit_margin_physical: physicalRevenue > 0 ? (physicalProfit / physicalRevenue * 100).toFixed(1) : 0,
+        profit_margin_online: onlineRevenue > 0 ? (onlineProfit / onlineRevenue * 100).toFixed(1) : 0
+      },
+      period_stats: statsByPeriod,
+      trend: {
+        online_growth: calculateGrowth(onlineOrders || [], 'total_amount'),
+        physical_growth: calculateGrowth(physicalSales || [], 'total_amount')
+      }
+    });
 
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -2305,8 +2419,32 @@ app.get('/api/public/shop-name/:user_id', async (req, res) => {
 
 app.post('/api/online-orders', async (req, res) => {
   try {
+    const { user_id } = req.body;
+    
+    const { count: salesCount } = await supabase
+      .from('online_orders')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', user_id);
+    
+    const { data: user } = await supabase
+      .from('users')
+      .select('max_online_sales, subscription_type')
+      .eq('id', user_id)
+      .single();
+    
+    const maxSales = user.subscription_type === 'premium' ? 99999 : (user.max_online_sales || 5);
+    
+    if (salesCount >= maxSales) {
+      return res.status(403).json({
+        success: false,
+        error: 'Limite ventes atteinte',
+        limit_reached: true,
+        current_count: salesCount,
+        max_allowed: maxSales
+      });
+    }
+    
     const { 
-      user_id, 
       customer_first_name, 
       customer_last_name, 
       customer_phone, 
@@ -2320,17 +2458,8 @@ app.post('/api/online-orders', async (req, res) => {
       items 
     } = req.body;
 
-    console.log('📦 DONNÉES REÇUES:', {
-      customer_first_name,
-      customer_last_name, 
-      delivery_address,
-      delivery_city
-    });
-
     if (!customer_first_name || !customer_last_name || !customer_phone || !delivery_address || !delivery_city) {
-      return res.status(400).json({ 
-        error: 'Champs manquants'
-      });
+      return res.status(400).json({ error: 'Champs manquants' });
     }
 
     let totalAmount = 0;
@@ -2349,9 +2478,7 @@ app.post('/api/online-orders', async (req, res) => {
       }
 
       if (product.stock < item.quantity) {
-        return res.status(400).json({ 
-          error: `Stock insuffisant pour ${product.name}`
-        });
+        return res.status(400).json({ error: `Stock insuffisant pour ${product.name}` });
       }
 
       const itemTotal = product.price * item.quantity;
@@ -2390,22 +2517,12 @@ app.post('/api/online-orders', async (req, res) => {
 
     if (orderError) throw orderError;
 
-    console.log('✅ COMMANDE CRÉÉE:', {
-      id: order[0].id,
-      prenom: order[0].customer_first_name,
-      nom: order[0].customer_last_name,
-      adresse: order[0].delivery_address,
-      ville: order[0].delivery_city
-    });
-
     res.json({
       success: true,
-      order: order[0],
-      message: 'Commande créée avec succès'
+      order: order[0]
     });
 
   } catch (error) {
-    console.error('❌ ERREUR:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -4136,6 +4253,34 @@ app.post('/api/admin/verify-payment/:transaction_id', requireAdmin, async (req, 
     success: true, 
     message: `Abonnement activé pour ${transaction.users.email}` 
   });
+});
+
+app.post('/api/webhooks/premium-activated', async (req, res) => {
+  try {
+    const { user_id, months } = req.body;
+    
+    const subscriptionEnd = new Date();
+    subscriptionEnd.setMonth(subscriptionEnd.getMonth() + months);
+    
+    const { error } = await supabase
+      .from('users')
+      .update({
+        subscription_type: 'premium',
+        subscription_end_date: subscriptionEnd.toISOString(),
+        max_products: 99999,
+        max_online_sales: 99999,
+        features_unlocked: true,
+        is_premium: true
+      })
+      .eq('id', user_id);
+    
+    if (error) throw error;
+    
+    res.json({ success: true });
+    
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 app.listen(PORT, '0.0.0.0', () => {
