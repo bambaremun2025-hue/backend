@@ -1553,7 +1553,53 @@ app.get('/api/sales', requireAuth, async (req, res) => {
 app.post('/api/sales', requireAuth, async (req, res) => {
     try {
         const userId = req.user.userId;
-        const { product_id, quantity, total_amount } = req.body;
+        const { product_id, quantity, price, total_amount } = req.body;
+        
+        const { data: user } = await supabase
+            .from('users')
+            .select('subscription_type, trial_ends_at, subscription_end_date, is_premium')
+            .eq('id', userId)
+            .single();
+        
+        const now = new Date();
+        let isActivePremium = false;
+        let isActiveTrial = false;
+
+        if (user.subscription_type === 'premium' && user.is_premium === true) {
+            isActivePremium = new Date(user.subscription_end_date) > now;
+        } else if (user.subscription_type === 'trial') {
+            isActiveTrial = new Date(user.trial_ends_at) > now;
+        }
+
+        const canMakeSale = isActivePremium || isActiveTrial;
+        
+        if (!canMakeSale) {
+            return res.status(403).json({
+                success: false,
+                error: 'Votre essai a expiré. Passez Premium pour continuer.',
+                trial_expired: true
+            });
+        }
+
+        if (!isActivePremium) {
+            const { count: physicalCount } = await supabase
+                .from('sales')
+                .select('*', { count: 'exact', head: true })
+                .eq('user_id', userId)
+                .eq('sale_type', 'physical');
+            
+            if ((physicalCount || 0) >= 5) {
+                return res.status(403).json({
+                    success: false,
+                    error: 'Limite de 5 ventes atteinte pour l\'essai gratuit',
+                    limit_reached: true,
+                    current_count: physicalCount || 0,
+                    max_allowed: 5
+                });
+            }
+        }
+
+        const finalTotalAmount = total_amount || (price * quantity);
         
         const { data: product, error: productError } = await supabase
             .from('products')
@@ -1573,7 +1619,7 @@ app.post('/api/sales', requireAuth, async (req, res) => {
         }
 
         const purchasePrice = product.purchase_price || 0;
-        const profit = total_amount - (purchasePrice * quantity);
+        const profit = finalTotalAmount - (purchasePrice * quantity);
 
         const { data: sale, error: saleError } = await supabase
             .from('sales')
@@ -1581,8 +1627,9 @@ app.post('/api/sales', requireAuth, async (req, res) => {
                 user_id: userId,
                 product_id,
                 quantity,
-                total_amount,
+                total_amount: finalTotalAmount,
                 profit: profit,
+                sale_type: 'physical',
                 sale_date: new Date().toISOString(),
                 created_at: new Date().toISOString()
             }])
