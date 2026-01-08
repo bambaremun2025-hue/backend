@@ -3816,9 +3816,13 @@ const naboopayResponse = await fetch('https://api.naboostart.com/v1/payments/ini
 
 app.post('/api/webhooks/naboostart', async (req, res) => {
   try {
+    console.log('🔔 Webhook NabooStart reçu:', req.body);
+    
     const { event, data } = req.body;
     
     if (event === 'payment.success') {
+      console.log('💰 Paiement réussi détecté:', data);
+      
       const paymentId = data.payment_id;
       
       let { data: transaction } = await supabase
@@ -3828,6 +3832,7 @@ app.post('/api/webhooks/naboostart', async (req, res) => {
         .single();
  
       if (!transaction) {
+        console.log('⚠️ Transaction non trouvée par payment_id, essaie par id...');
         const { data: txByTransactionId } = await supabase
           .from('payment_transactions')
           .select('*')
@@ -3836,17 +3841,23 @@ app.post('/api/webhooks/naboostart', async (req, res) => {
         
         if (txByTransactionId) {
           transaction = txByTransactionId;
+          console.log('✅ Transaction trouvée par id:', transaction.id);
         }
       }
    
       if (!transaction) {
+        console.log('❌ Transaction non trouvée');
         return res.json({ success: false });
       }
+      
+      console.log('🎯 Transaction trouvée:', transaction);
       
       const subscriptionEnd = new Date();
       subscriptionEnd.setMonth(subscriptionEnd.getMonth() + transaction.subscription_months);
       
-      await supabase
+      console.log(`📅 Date fin abonnement: ${subscriptionEnd.toISOString()}`);
+      
+      const { error: updateError } = await supabase
         .from('users')
         .update({
           subscription_type: 'premium',
@@ -3858,11 +3869,21 @@ app.post('/api/webhooks/naboostart', async (req, res) => {
           activated_at: new Date().toISOString()
         })
         .eq('id', transaction.user_id);
+
+      if (updateError) {
+        console.error('❌ Erreur UPDATE:', updateError);
+        throw updateError;
+      }
+      
+      console.log(`✅ Premium activé pour user: ${transaction.user_id}`);
+      
+      console.log('🎉 Webhook terminé avec succès');
     }
     
     res.json({ success: true });
     
   } catch (error) {
+    console.error('💥 Webhook error:', error);
     res.status(500).json({ error: error.message });
   }
 });
