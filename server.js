@@ -4336,6 +4336,55 @@ app.post('/api/webhooks/premium-activated', async (req, res) => {
   }
 });
 
+app.get('/api/debug/user-subscription/:user_id', async (req, res) => {
+  try {
+    const { user_id } = req.params;
+    
+    const { data: user, error } = await supabase
+      .from('users')
+      .select('*')
+      .eq('id', user_id)
+      .single();
+      
+    if (error) throw error;
+    
+    const now = new Date();
+    const subscriptionEnd = user.subscription_type === 'premium' 
+      ? new Date(user.subscription_end_date)
+      : new Date(user.trial_ends_at);
+    
+    const isActivePremium = user.subscription_type === 'premium' && 
+                          user.is_premium === true &&
+                          subscriptionEnd > now;
+    
+    res.json({
+      user_id,
+      email: user.email,
+      full_name: user.full_name,
+      subscription_type: user.subscription_type,
+      is_premium: user.is_premium,
+      subscription_end_date: user.subscription_end_date,
+      trial_ends_at: user.trial_ends_at,
+      max_products: user.max_products,
+      max_online_sales: user.max_online_sales,
+      features_unlocked: user.features_unlocked,
+      is_active_premium: isActivePremium,
+      subscription_end_date_iso: subscriptionEnd.toISOString(),
+      now_iso: now.toISOString(),
+      days_left: Math.ceil((subscriptionEnd - now) / (1000 * 60 * 60 * 24)),
+      debug_info: {
+        subscription_type_check: user.subscription_type === 'premium',
+        is_premium_check: user.is_premium === true,
+        date_check: subscriptionEnd > now,
+        final_result: isActivePremium
+      }
+    });
+    
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`Serveur demarre sur le port ${PORT}`);
 });
