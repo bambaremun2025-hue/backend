@@ -1620,15 +1620,30 @@ app.post('/api/physical-sales', requireAuth, async (req, res) => {
     
     const { data: user } = await supabase
       .from('users')
-      .select('subscription_type, is_premium, subscription_end_date')
+      .select('subscription_type, is_premium, subscription_end_date, trial_ends_at')
       .eq('id', userId)
       .single();
     
     const now = new Date();
-    const isActivePremium = user.subscription_type === 'premium' && 
-                           user.is_premium === true &&
-                           new Date(user.subscription_end_date) > now;
+    let isActivePremium = false;
+    let isActiveTrial = false;
+
+    if (user.subscription_type === 'premium' && user.is_premium === true) {
+      isActivePremium = new Date(user.subscription_end_date) > now;
+    } else if (user.subscription_type === 'trial') {
+      isActiveTrial = new Date(user.trial_ends_at) > now;
+    }
+
+    const canMakeSale = isActivePremium || isActiveTrial;
     
+    if (!canMakeSale) {
+      return res.status(403).json({
+        success: false,
+        error: 'Votre essai a expiré. Passez Premium pour continuer.',
+        trial_expired: true
+      });
+    }
+
     if (!isActivePremium) {
       const { count: physicalCount } = await supabase
         .from('sales')
@@ -1639,7 +1654,7 @@ app.post('/api/physical-sales', requireAuth, async (req, res) => {
       if ((physicalCount || 0) >= 5) {
         return res.status(403).json({
           success: false,
-          error: 'Limite atteinte',
+          error: 'Limite de 5 ventes atteinte pour l\'essai gratuit',
           limit_reached: true,
           current_count: physicalCount || 0,
           max_allowed: 5
@@ -1722,7 +1737,6 @@ app.post('/api/physical-sales', requireAuth, async (req, res) => {
     });
   }
 });
-
 app.get('/api/physical-sales', requireAuth, async (req, res) => {
   try {
     const userId = req.user.userId;
@@ -2467,15 +2481,30 @@ app.post('/api/online-orders', async (req, res) => {
     
     const { data: user } = await supabase
       .from('users')
-      .select('subscription_type, is_premium, subscription_end_date')
+      .select('subscription_type, trial_ends_at, subscription_end_date, is_premium')
       .eq('id', user_id)
       .single();
     
     const now = new Date();
-    const isActivePremium = user.subscription_type === 'premium' && 
-                           user.is_premium === true &&
-                           new Date(user.subscription_end_date) > now;
+    let isActivePremium = false;
+    let isActiveTrial = false;
+
+    if (user.subscription_type === 'premium' && user.is_premium === true) {
+      isActivePremium = new Date(user.subscription_end_date) > now;
+    } else if (user.subscription_type === 'trial') {
+      isActiveTrial = new Date(user.trial_ends_at) > now;
+    }
+
+    const canMakeOrder = isActivePremium || isActiveTrial;
     
+    if (!canMakeOrder) {
+      return res.status(403).json({
+        success: false,
+        error: 'Votre essai a expiré. Passez Premium pour continuer.',
+        trial_expired: true
+      });
+    }
+
     if (!isActivePremium) {
       const { count: salesCount } = await supabase
         .from('online_orders')
@@ -2485,7 +2514,7 @@ app.post('/api/online-orders', async (req, res) => {
       if (salesCount >= 5) {
         return res.status(403).json({
           success: false,
-          error: 'Limite ventes atteinte',
+          error: 'Limite de 5 commandes en ligne atteinte pour l\'essai gratuit',
           limit_reached: true,
           current_count: salesCount,
           max_allowed: 5
@@ -2799,31 +2828,52 @@ app.get('/api/user/limits-status', requireAuth, async (req, res) => {
       .select('*', { count: 'exact', head: true })
       .eq('user_id', userId);
     
-    const totalSalesCount = (physicalSalesCount || 0) + (onlineSalesCount || 0);
-    
     const { data: user } = await supabase
       .from('users')
-      .select('subscription_type')
+      .select('subscription_type, trial_ends_at, subscription_end_date, is_premium')
       .eq('id', userId)
       .single();
     
-    const isPremium = user.subscription_type === 'premium';
+    const now = new Date();
+    let isActivePremium = false;
+    let isActiveTrial = false;
+
+    if (user.subscription_type === 'premium' && user.is_premium === true) {
+      isActivePremium = new Date(user.subscription_end_date) > now;
+    } else if (user.subscription_type === 'trial') {
+      isActiveTrial = new Date(user.trial_ends_at) > now;
+    }
+
+    const isPremiumUser = isActivePremium;
+    const isTrialUser = isActiveTrial && !isActivePremium;
+    const trialExpired = user.subscription_type === 'trial' && !isActiveTrial;
     
     res.json({
-      is_premium: isPremium,
+      is_premium: isPremiumUser,
+      is_trial: isTrialUser,
+      trial_expired: trialExpired,
+      
       products: {
         current: productCount || 0,
-        max: isPremium ? 99999 : 5,
-        limit_reached: !isPremium && (productCount || 0) >= 5
+        max: isPremiumUser ? 99999 : (isTrialUser ? 5 : 0),
+        limit_reached: !isPremiumUser && (productCount || 0) >= (isTrialUser ? 5 : 0)
       },
+      
+      physical_sales: {
+        current: physicalSalesCount || 0,
+        max: isPremiumUser ? 99999 : (isTrialUser ? 5 : 0),
+        limit_reached: !isPremiumUser && (physicalSalesCount || 0) >= (isTrialUser ? 5 : 0)
+      },
+      
       online_sales: {
-        current: totalSalesCount,
-        max: isPremium ? 99999 : 5,
-        limit_reached: !isPremium && totalSalesCount >= 5
+        current: onlineSalesCount || 0,
+        max: isPremiumUser ? 99999 : (isTrialUser ? 5 : 0),
+        limit_reached: !isPremiumUser && (onlineSalesCount || 0) >= (isTrialUser ? 5 : 0)
       },
+      
       analytics: {
-        allowed: isPremium,
-        locked: !isPremium
+        allowed: isPremiumUser,
+        locked: !isPremiumUser
       }
     });
     
