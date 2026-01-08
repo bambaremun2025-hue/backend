@@ -2788,10 +2788,18 @@ app.get('/api/user/limits-status', requireAuth, async (req, res) => {
       .select('*', { count: 'exact', head: true })
       .eq('user_id', userId);
     
-    const { count: salesCount } = await supabase
+    const { count: physicalSalesCount } = await supabase
+      .from('sales')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .eq('sale_type', 'physical');
+    
+    const { count: onlineSalesCount } = await supabase
       .from('online_orders')
       .select('*', { count: 'exact', head: true })
       .eq('user_id', userId);
+    
+    const totalSalesCount = (physicalSalesCount || 0) + (onlineSalesCount || 0);
     
     const { data: user } = await supabase
       .from('users')
@@ -2809,9 +2817,9 @@ app.get('/api/user/limits-status', requireAuth, async (req, res) => {
         limit_reached: !isPremium && (productCount || 0) >= 5
       },
       online_sales: {
-        current: salesCount || 0,
+        current: totalSalesCount,
         max: isPremium ? 99999 : 5,
-        limit_reached: !isPremium && (salesCount || 0) >= 5
+        limit_reached: !isPremium && totalSalesCount >= 5
       },
       analytics: {
         allowed: isPremium,
