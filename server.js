@@ -1620,11 +1620,16 @@ app.post('/api/physical-sales', requireAuth, async (req, res) => {
     
     const { data: user } = await supabase
       .from('users')
-      .select('subscription_type')
+      .select('subscription_type, is_premium, subscription_end_date')
       .eq('id', userId)
       .single();
     
-    if (user.subscription_type !== 'premium') {
+    const now = new Date();
+    const isActivePremium = user.subscription_type === 'premium' && 
+                           user.is_premium === true &&
+                           new Date(user.subscription_end_date) > now;
+    
+    if (!isActivePremium) {
       const { count: physicalCount } = await supabase
         .from('sales')
         .select('*', { count: 'exact', head: true })
@@ -2460,27 +2465,32 @@ app.post('/api/online-orders', async (req, res) => {
   try {
     const { user_id } = req.body;
     
-    const { count: salesCount } = await supabase
-      .from('online_orders')
-      .select('*', { count: 'exact', head: true })
-      .eq('user_id', user_id);
-    
     const { data: user } = await supabase
       .from('users')
-      .select('max_online_sales, subscription_type')
+      .select('subscription_type, is_premium, subscription_end_date')
       .eq('id', user_id)
       .single();
     
-    const maxSales = user.subscription_type === 'premium' ? 99999 : (user.max_online_sales || 5);
+    const now = new Date();
+    const isActivePremium = user.subscription_type === 'premium' && 
+                           user.is_premium === true &&
+                           new Date(user.subscription_end_date) > now;
     
-    if (salesCount >= maxSales) {
-      return res.status(403).json({
-        success: false,
-        error: 'Limite ventes atteinte',
-        limit_reached: true,
-        current_count: salesCount,
-        max_allowed: maxSales
-      });
+    if (!isActivePremium) {
+      const { count: salesCount } = await supabase
+        .from('online_orders')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', user_id);
+      
+      if (salesCount >= 5) {
+        return res.status(403).json({
+          success: false,
+          error: 'Limite ventes atteinte',
+          limit_reached: true,
+          current_count: salesCount,
+          max_allowed: 5
+        });
+      }
     }
     
     const { 
@@ -2565,6 +2575,7 @@ app.post('/api/online-orders', async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
+
 
 app.get('/api/online-orders/detailed', requireAuth, async (req, res) => {
   try {
