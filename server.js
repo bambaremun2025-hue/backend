@@ -3580,9 +3580,9 @@ app.get('/api/affiliate/dashboard/:unique_code', async (req, res) => {
     
     const { data: referrals } = await supabase
       .from('affiliate_referrals')
-      .select('id, status, commission_amount, current_status, user_created_at, trial_started_at, premium_converted_at, users(email, full_name, subscription_type, trial_ends_at, subscription_end_date)')
-      .eq('influencer_id', influencerId)
-      .order('user_created_at', { ascending: false });
+      .select('id, status, commission_amount, current_status, user_created_at, trial_started_at, premium_converted_at, referred_email, referred_user_id')
+      .or(`influencer_id.eq.${influencerId},affiliate_name.eq.${unique_code}`)
+      .order('created_at', { ascending: false });
     
     const { data: payments } = await supabase
       .from('affiliate_payments')
@@ -3592,7 +3592,7 @@ app.get('/api/affiliate/dashboard/:unique_code', async (req, res) => {
     const allReferrals = referrals || [];
     const premiumReferrals = allReferrals.filter(r => r.current_status === 'premium');
     const trialReferrals = allReferrals.filter(r => r.current_status === 'trial');
-    const registeredReferrals = allReferrals.filter(r => r.current_status === 'registered');
+    const registeredReferrals = allReferrals.filter(r => !r.current_status || r.current_status === 'registered');
     const expiredReferrals = allReferrals.filter(r => r.current_status === 'expired');
     
     const stats = {
@@ -3616,18 +3616,6 @@ app.get('/api/affiliate/dashboard/:unique_code', async (req, res) => {
       total_earned: data.total_earnings || 0
     };
     
-    const formattedReferrals = allReferrals.map(r => ({
-      id: r.id,
-      user_email: r.users?.email,
-      user_name: r.users?.full_name,
-      signup_date: r.user_created_at,
-      current_status: r.current_status,
-      trial_ends_at: r.users?.trial_ends_at,
-      premium_converted_at: r.premium_converted_at,
-      commission_amount: r.commission_amount,
-      commission_status: r.status
-    }));
-    
     res.json({
       success: true,
       name: data.name,
@@ -3635,7 +3623,7 @@ app.get('/api/affiliate/dashboard/:unique_code', async (req, res) => {
       unique_code: data.unique_code,
       affiliate_link: data.affiliate_link,
       stats,
-      referrals: formattedReferrals,
+      referrals: allReferrals,
       payments: payments || []
     });
     
@@ -3643,7 +3631,6 @@ app.get('/api/affiliate/dashboard/:unique_code', async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
-
 
 app.get('/api/admin/affiliates', requireAdmin, async (req, res) => {
   try {
