@@ -3578,31 +3578,38 @@ app.get('/api/affiliate/dashboard/:unique_code', async (req, res) => {
     
     const influencerId = influencerIdResult.data?.id;
     
-    const { data: referrals } = await supabase
+    const { data: referralsByName } = await supabase
       .from('affiliate_referrals')
       .select('id, status, commission_amount, current_status, user_created_at, trial_started_at, premium_converted_at, referred_email, referred_user_id')
-      .or(`influencer_id.eq.${influencerId},affiliate_name.eq.${unique_code}`)
-      .order('created_at', { ascending: false });
+      .eq('affiliate_name', unique_code);
+    
+    const { data: referralsById } = await supabase
+      .from('affiliate_referrals')
+      .select('id, status, commission_amount, current_status, user_created_at, trial_started_at, premium_converted_at, referred_email, referred_user_id')
+      .eq('influencer_id', influencerId);
+    
+    const allReferrals = [...(referralsByName || []), ...(referralsById || [])];
+    const uniqueReferrals = Array.from(new Set(allReferrals.map(r => r.id)))
+      .map(id => allReferrals.find(r => r.id === id));
     
     const { data: payments } = await supabase
       .from('affiliate_payments')
       .select('amount, status')
       .eq('influencer_id', influencerId);
     
-    const allReferrals = referrals || [];
-    const premiumReferrals = allReferrals.filter(r => r.current_status === 'premium');
-    const trialReferrals = allReferrals.filter(r => r.current_status === 'trial');
-    const registeredReferrals = allReferrals.filter(r => !r.current_status || r.current_status === 'registered');
-    const expiredReferrals = allReferrals.filter(r => r.current_status === 'expired');
+    const premiumReferrals = uniqueReferrals.filter(r => r.current_status === 'premium');
+    const trialReferrals = uniqueReferrals.filter(r => r.current_status === 'trial');
+    const registeredReferrals = uniqueReferrals.filter(r => !r.current_status || r.current_status === 'registered');
+    const expiredReferrals = uniqueReferrals.filter(r => r.current_status === 'expired');
     
     const stats = {
-      total_signups: allReferrals.length,
+      total_signups: uniqueReferrals.length,
       active_trials: trialReferrals.length,
       premium_conversions: premiumReferrals.length,
       registered_users: registeredReferrals.length,
       expired_trials: expiredReferrals.length,
-      conversion_rate: allReferrals.length > 0 
-        ? (premiumReferrals.length / allReferrals.length * 100).toFixed(1)
+      conversion_rate: uniqueReferrals.length > 0 
+        ? (premiumReferrals.length / uniqueReferrals.length * 100).toFixed(1)
         : 0,
       
       total_referrals: premiumReferrals.length,
@@ -3623,7 +3630,7 @@ app.get('/api/affiliate/dashboard/:unique_code', async (req, res) => {
       unique_code: data.unique_code,
       affiliate_link: data.affiliate_link,
       stats,
-      referrals: allReferrals,
+      referrals: uniqueReferrals,
       payments: payments || []
     });
     
