@@ -3348,8 +3348,6 @@ app.post('/api/track-affiliate-status-update', async (req, res) => {
         });
         
         updates.commission = commissionAmount;
-        updates.commission_type = 'first_month';
-        updates.month_reference = new Date().toISOString().slice(0, 7);
         updates.status = 'approved';
         
         console.log('📈 [TRACK] Updating influencer earnings...');
@@ -3366,6 +3364,10 @@ app.post('/api/track-affiliate-status-update', async (req, res) => {
           console.log('✅ [TRACK] Influencer earnings updated');
         }
       }
+    }
+    
+    else if (new_status === 'expired') {
+      updates.status = 'expired';
     }
     
     console.log('🔄 [TRACK] Final updates to apply:', updates);
@@ -3389,6 +3391,7 @@ app.post('/api/track-affiliate-status-update', async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
+
 app.post('/api/track-affiliate-premium', async (req, res) => {
   try {
     const { user_id, subscription_amount } = req.body;
