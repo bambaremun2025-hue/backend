@@ -3289,12 +3289,12 @@ app.post('/api/track-affiliate-signup', async (req, res) => {
 
 app.post('/api/track-affiliate-status-update', async (req, res) => {
   try {
-    console.log('🔔 Track affiliate status update:', req.body);
+    console.log('🔔 [TRACK] Track affiliate status update START:', req.body);
     
     const { user_id, new_status, subscription_amount } = req.body;
     
-    console.log('🔍 Looking for referral for user:', user_id);
-  
+    console.log('🔍 [TRACK] Looking for referral for user:', user_id);
+    
     const { data: referrals, error } = await supabase
       .from('affiliate_referrals')
       .select('*, affiliate_influencers(*)')
@@ -3302,22 +3302,30 @@ app.post('/api/track-affiliate-status-update', async (req, res) => {
       .order('created_at', { ascending: false })
       .limit(1);
     
-    console.log('📊 Referrals found:', referrals?.length, 'Error:', error);
+    console.log('📊 [TRACK] Supabase query result:', {
+      referralsCount: referrals?.length,
+      error: error?.message,
+      firstReferralId: referrals?.[0]?.id
+    });
     
     if (!referrals || referrals.length === 0) {
-      console.log('❌ No referral found for user:', user_id);
+      console.log('❌ [TRACK] No referral found for user:', user_id);
       return res.json({ success: false, error: 'No referral found' });
     }
     
     const referral = referrals[0];
-    console.log('✅ Using referral:', referral.id);
-    
-    if (!referral) return res.json({ success: false });
+    console.log('✅ [TRACK] Using referral:', {
+      id: referral.id,
+      current_status: referral.current_status,
+      influencer_id: referral.influencer_id,
+      affiliate_name: referral.affiliate_name
+    });
     
     const updates = {
-      current_status: new_status,
-      updated_at: new Date().toISOString()
+      current_status: new_status
     };
+    
+    console.log('📝 [TRACK] Planned updates:', updates);
     
     if (new_status === 'premium') {
       updates.premium_converted_at = new Date().toISOString();
@@ -3325,40 +3333,62 @@ app.post('/api/track-affiliate-status-update', async (req, res) => {
       updates.subscription_amount = subscription_amount;
       
       const influencer = referral.affiliate_influencers;
-      const commissionAmount = subscription_amount * (influencer.commission_first_month / 100);
+      console.log('💰 [TRACK] Influencer found:', {
+        id: influencer?.id,
+        name: influencer?.name,
+        commission_first_month: influencer?.commission_first_month
+      });
       
-      updates.commission = commissionAmount;
-      updates.commission_type = 'first_month';
-      updates.month_reference = new Date().toISOString().slice(0, 7);
-      updates.status = 'approved';
-      
-      await supabase
-        .from('affiliate_influencers')
-        .update({
-          total_earnings: (influencer.total_earnings || 0) + commissionAmount
-        })
-        .eq('id', influencer.id);
+      if (influencer) {
+        const commissionAmount = subscription_amount * (influencer.commission_first_month / 100);
+        console.log('💰 [TRACK] Commission calculation:', {
+          subscription_amount,
+          commission_rate: influencer.commission_first_month,
+          commission_amount: commissionAmount
+        });
+        
+        updates.commission = commissionAmount;
+        updates.commission_type = 'first_month';
+        updates.month_reference = new Date().toISOString().slice(0, 7);
+        updates.status = 'approved';
+        
+        console.log('📈 [TRACK] Updating influencer earnings...');
+        const { error: infError } = await supabase
+          .from('affiliate_influencers')
+          .update({
+            total_earnings: (influencer.total_earnings || 0) + commissionAmount
+          })
+          .eq('id', influencer.id);
+        
+        if (infError) {
+          console.log('❌ [TRACK] Influencer update error:', infError.message);
+        } else {
+          console.log('✅ [TRACK] Influencer earnings updated');
+        }
+      }
     }
     
-    else if (new_status === 'expired') {
-      updates.status = 'expired';
-    }
+    console.log('🔄 [TRACK] Final updates to apply:', updates);
     
-    await supabase
+    const { error: updateError } = await supabase
       .from('affiliate_referrals')
       .update(updates)
       .eq('id', referral.id);
     
-    console.log('🎯 Updates applied:', updates);
+    if (updateError) {
+      console.log('❌ [TRACK] Update error:', updateError.message);
+      throw updateError;
+    }
+    
+    console.log('🎯 [TRACK] Updates applied successfully!');
     
     res.json({ success: true });
     
   } catch (error) {
-    console.error('💥 Error in track-affiliate-status-update:', error);
+    console.error('💥 [TRACK] Error:', error.message);
     res.status(500).json({ error: error.message });
   }
 });
-
 app.post('/api/track-affiliate-premium', async (req, res) => {
   try {
     const { user_id, subscription_amount } = req.body;
