@@ -3289,13 +3289,28 @@ app.post('/api/track-affiliate-signup', async (req, res) => {
 
 app.post('/api/track-affiliate-status-update', async (req, res) => {
   try {
+    console.log('🔔 Track affiliate status update:', req.body);
+    
     const { user_id, new_status, subscription_amount } = req.body;
     
-    const { data: referral } = await supabase
+    console.log('🔍 Looking for referral for user:', user_id);
+  
+    const { data: referrals, error } = await supabase
       .from('affiliate_referrals')
       .select('*, affiliate_influencers(*)')
       .eq('referred_user_id', user_id)
-      .single();
+      .order('created_at', { ascending: false })
+      .limit(1);
+    
+    console.log('📊 Referrals found:', referrals?.length, 'Error:', error);
+    
+    if (!referrals || referrals.length === 0) {
+      console.log('❌ No referral found for user:', user_id);
+      return res.json({ success: false, error: 'No referral found' });
+    }
+    
+    const referral = referrals[0];
+    console.log('✅ Using referral:', referral.id);
     
     if (!referral) return res.json({ success: false });
     
@@ -3312,7 +3327,7 @@ app.post('/api/track-affiliate-status-update', async (req, res) => {
       const influencer = referral.affiliate_influencers;
       const commissionAmount = subscription_amount * (influencer.commission_first_month / 100);
       
-      updates.commission = commissionAmount; 
+      updates.commission = commissionAmount;
       updates.commission_type = 'first_month';
       updates.month_reference = new Date().toISOString().slice(0, 7);
       updates.status = 'approved';
@@ -3334,13 +3349,15 @@ app.post('/api/track-affiliate-status-update', async (req, res) => {
       .update(updates)
       .eq('id', referral.id);
     
+    console.log('🎯 Updates applied:', updates);
+    
     res.json({ success: true });
     
   } catch (error) {
+    console.error('💥 Error in track-affiliate-status-update:', error);
     res.status(500).json({ error: error.message });
   }
 });
-
 
 app.post('/api/track-affiliate-premium', async (req, res) => {
   try {
