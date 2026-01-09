@@ -3197,13 +3197,11 @@ app.post('/api/admin/users/bulk-delete', requireAdmin, async (req, res) => {
   }
 });
 
-
 app.post('/api/affiliate/register', requireAdmin, async (req, res) => {
   try {
     const { name, email, phone, social_media, commission_first_month, commission_recurring } = req.body;
     
-    const firstMonthCommission = commission_first_month || 40.00;
-    const recurringCommission = commission_recurring || 20.00;
+    const commissionRate = 30.00;
     
     const uniqueCode = `SAMA_${Math.random().toString(36).substr(2, 8).toUpperCase()}`;
     const affiliateLink = `https://samaboutiksn.netlify.app/signup?affiliate=${uniqueCode}`;
@@ -3217,8 +3215,7 @@ app.post('/api/affiliate/register', requireAdmin, async (req, res) => {
         social_media,
         unique_code: uniqueCode,
         affiliate_link: affiliateLink,
-        commission_first_month: firstMonthCommission,
-        commission_recurring: recurringCommission,
+        commission_rate: commissionRate,
         total_earnings: 0,
         status: 'active',
         user_id: req.user.userId
@@ -3336,14 +3333,14 @@ app.post('/api/track-affiliate-status-update', async (req, res) => {
       console.log('💰 [TRACK] Influencer found:', {
         id: influencer?.id,
         name: influencer?.name,
-        commission_first_month: influencer?.commission_first_month
+        commission_rate: influencer?.commission_rate
       });
       
       if (influencer) {
-        const commissionAmount = subscription_amount * (influencer.commission_first_month / 100);
+        const commissionAmount = subscription_amount * (influencer.commission_rate / 100);
         console.log('💰 [TRACK] Commission calculation:', {
           subscription_amount,
-          commission_rate: influencer.commission_first_month,
+          commission_rate: influencer.commission_rate,
           commission_amount: commissionAmount
         });
         
@@ -3405,7 +3402,7 @@ app.post('/api/track-affiliate-premium', async (req, res) => {
     if (!referral) return res.json({ success: false });
     
     const influencer = referral.affiliate_influencers;
-    const commissionAmount = subscription_amount * (influencer.commission_first_month / 100);
+    const commissionAmount = subscription_amount * (influencer.commission_rate / 100);
     
     await supabase
       .from('affiliate_referrals')
