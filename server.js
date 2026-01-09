@@ -3489,7 +3489,7 @@ app.post('/api/affiliate/calculate-recurring', requireAdmin, async (req, res) =>
         .single();
       
       if (!existing && referral.influencer_id) {
-        const commissionAmount = referral.subscription_amount * (referral.affiliate_influencers.commission_recurring / 100);
+        const commissionAmount = subscription_amount * (influencer.commission_rate / 100);
         
         await supabase
           .from('affiliate_referrals')
