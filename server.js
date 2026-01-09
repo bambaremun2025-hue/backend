@@ -3554,6 +3554,31 @@ app.get('/api/affiliate/system-check', async (req, res) => {
   }
 });
 
+app.post('/api/test-affiliate-query', async (req, res) => {
+  try {
+    const { unique_code, influencer_id } = req.body;
+    
+    const { data: byName, error: err1 } = await supabase
+      .from('affiliate_referrals')
+      .select('*')
+      .eq('affiliate_name', unique_code);
+    
+    const { data: byId, error: err2 } = await supabase
+      .from('affiliate_referrals')
+      .select('*')
+      .eq('influencer_id', influencer_id);
+    
+    res.json({
+      byName: { count: byName?.length || 0, data: byName, error: err1 },
+      byId: { count: byId?.length || 0, data: byId, error: err2 },
+      combined: (byName?.length || 0) + (byId?.length || 0)
+    });
+    
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.get('/api/affiliate/dashboard/:unique_code', async (req, res) => {
   try {
     const { unique_code } = req.params;
