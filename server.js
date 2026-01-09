@@ -3312,7 +3312,7 @@ app.post('/api/track-affiliate-status-update', async (req, res) => {
       const influencer = referral.affiliate_influencers;
       const commissionAmount = subscription_amount * (influencer.commission_first_month / 100);
       
-      updates.commission_amount = commissionAmount;
+      updates.commission = commissionAmount; 
       updates.commission_type = 'first_month';
       updates.month_reference = new Date().toISOString().slice(0, 7);
       updates.status = 'approved';
