@@ -3661,9 +3661,18 @@ app.get('/api/affiliate/dashboard/:unique_code', async (req, res) => {
       .eq('influencer_id', influencerId);
     
     const allReferrals = referrals || [];
-    const premiumReferrals = allReferrals.filter(r => r.current_status === 'premium');
+ 
+    const premiumReferrals = allReferrals.filter(r => 
+      r.current_status === 'premium' || 
+      r.subscription_type === 'premium' ||
+      r.status === 'approved'
+    );
+    
     const trialReferrals = allReferrals.filter(r => r.current_status === 'trial');
-    const registeredReferrals = allReferrals.filter(r => !r.current_status || r.current_status === 'registered');
+    const registeredReferrals = allReferrals.filter(r => 
+      (!r.current_status || r.current_status === 'registered') && 
+      r.subscription_type !== 'premium'
+    );
     const expiredReferrals = allReferrals.filter(r => r.current_status === 'expired');
     
     const stats = {
