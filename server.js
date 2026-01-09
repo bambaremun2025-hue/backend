@@ -3255,6 +3255,12 @@ app.post('/api/track-affiliate-signup', async (req, res) => {
       return res.json({ success: false });
     }
     
+    const { data: user } = await supabase
+      .from('users')
+      .select('created_at, subscription_type, trial_ends_at')
+      .eq('id', user_id)
+      .single();
+    
     const { data: referral, error } = await supabase
       .from('affiliate_referrals')
       .insert([{
@@ -3262,6 +3268,9 @@ app.post('/api/track-affiliate-signup', async (req, res) => {
         influencer_id: influencer.id,
         referred_user_id: user_id,
         referred_email: user_email,
+        user_created_at: user?.created_at,
+        trial_started_at: user?.created_at,
+        current_status: user?.subscription_type || 'registered',
         status: 'tracked'
       }])
       .select();
@@ -3277,6 +3286,61 @@ app.post('/api/track-affiliate-signup', async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
+
+app.post('/api/track-affiliate-status-update', async (req, res) => {
+  try {
+    const { user_id, new_status, subscription_amount } = req.body;
+    
+    const { data: referral } = await supabase
+      .from('affiliate_referrals')
+      .select('*, affiliate_influencers(*)')
+      .eq('referred_user_id', user_id)
+      .single();
+    
+    if (!referral) return res.json({ success: false });
+    
+    const updates = {
+      current_status: new_status,
+      updated_at: new Date().toISOString()
+    };
+    
+    if (new_status === 'premium') {
+      updates.premium_converted_at = new Date().toISOString();
+      updates.subscription_type = 'premium';
+      updates.subscription_amount = subscription_amount;
+      
+      const influencer = referral.affiliate_influencers;
+      const commissionAmount = subscription_amount * (influencer.commission_first_month / 100);
+      
+      updates.commission_amount = commissionAmount;
+      updates.commission_type = 'first_month';
+      updates.month_reference = new Date().toISOString().slice(0, 7);
+      updates.status = 'approved';
+      
+      await supabase
+        .from('affiliate_influencers')
+        .update({
+          total_earnings: (influencer.total_earnings || 0) + commissionAmount
+        })
+        .eq('id', influencer.id);
+    }
+    
+    else if (new_status === 'expired') {
+      updates.status = 'expired';
+    }
+    
+    await supabase
+      .from('affiliate_referrals')
+      .update(updates)
+      .eq('id', referral.id);
+    
+    res.json({ success: true });
+    
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 
 app.post('/api/track-affiliate-premium', async (req, res) => {
   try {
@@ -3516,25 +3580,53 @@ app.get('/api/affiliate/dashboard/:unique_code', async (req, res) => {
     
     const { data: referrals } = await supabase
       .from('affiliate_referrals')
-      .select('id, status, commission_amount')
-      .eq('influencer_id', influencerId);
+      .select('id, status, commission_amount, current_status, user_created_at, trial_started_at, premium_converted_at, users(email, full_name, subscription_type, trial_ends_at, subscription_end_date)')
+      .eq('influencer_id', influencerId)
+      .order('user_created_at', { ascending: false });
     
     const { data: payments } = await supabase
       .from('affiliate_payments')
       .select('amount, status')
       .eq('influencer_id', influencerId);
     
+    const allReferrals = referrals || [];
+    const premiumReferrals = allReferrals.filter(r => r.current_status === 'premium');
+    const trialReferrals = allReferrals.filter(r => r.current_status === 'trial');
+    const registeredReferrals = allReferrals.filter(r => r.current_status === 'registered');
+    const expiredReferrals = allReferrals.filter(r => r.current_status === 'expired');
+    
     const stats = {
-      total_referrals: referrals?.length || 0,
-      active_referrals: referrals?.filter(r => r.status === 'approved').length || 0,
-      pending_commission: referrals
-        ?.filter(r => r.status === 'approved')
+      total_signups: allReferrals.length,
+      active_trials: trialReferrals.length,
+      premium_conversions: premiumReferrals.length,
+      registered_users: registeredReferrals.length,
+      expired_trials: expiredReferrals.length,
+      conversion_rate: allReferrals.length > 0 
+        ? (premiumReferrals.length / allReferrals.length * 100).toFixed(1)
+        : 0,
+      
+      total_referrals: premiumReferrals.length,
+      active_referrals: premiumReferrals.filter(r => r.status === 'approved').length,
+      pending_commission: premiumReferrals
+        .filter(r => r.status === 'approved')
         .reduce((sum, r) => sum + (r.commission_amount || 0), 0) || 0,
       total_paid: payments
         ?.filter(p => p.status === 'completed')
         .reduce((sum, p) => sum + (p.amount || 0), 0) || 0,
       total_earned: data.total_earnings || 0
     };
+    
+    const formattedReferrals = allReferrals.map(r => ({
+      id: r.id,
+      user_email: r.users?.email,
+      user_name: r.users?.full_name,
+      signup_date: r.user_created_at,
+      current_status: r.current_status,
+      trial_ends_at: r.users?.trial_ends_at,
+      premium_converted_at: r.premium_converted_at,
+      commission_amount: r.commission_amount,
+      commission_status: r.status
+    }));
     
     res.json({
       success: true,
@@ -3543,7 +3635,7 @@ app.get('/api/affiliate/dashboard/:unique_code', async (req, res) => {
       unique_code: data.unique_code,
       affiliate_link: data.affiliate_link,
       stats,
-      referrals: referrals || [],
+      referrals: formattedReferrals,
       payments: payments || []
     });
     
@@ -3992,6 +4084,21 @@ app.post('/api/webhooks/naboostart', async (req, res) => {
       }
       
       console.log(`✅ Premium activé pour user: ${transaction.user_id}`);
+      
+      try {
+        await fetch('https://backend-s05x.onrender.com/api/track-affiliate-status-update', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            user_id: transaction.user_id,
+            new_status: 'premium',
+            subscription_amount: transaction.amount
+          })
+        });
+        console.log('✅ Affiliation premium trackée');
+      } catch (affiliateError) {
+        console.log('⚠️ Erreur tracking affiliation:', affiliateError.message);
+      }
       
       console.log('🎉 Webhook terminé avec succès');
     }
