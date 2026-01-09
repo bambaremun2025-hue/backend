@@ -3683,7 +3683,7 @@ app.get('/api/affiliate/dashboard/:unique_code', async (req, res) => {
       active_referrals: premiumReferrals.filter(r => r.status === 'approved').length,
       pending_commission: premiumReferrals
         .filter(r => r.status === 'approved')
-        .reduce((sum, r) => sum + (r.commission_amount || 0), 0) || 0,
+        .reduce((sum, r) => sum + (r.commission || 0), 0) || 0,
       total_paid: payments
         ?.filter(p => p.status === 'completed')
         .reduce((sum, p) => sum + (p.amount || 0), 0) || 0,
@@ -3705,6 +3705,7 @@ app.get('/api/affiliate/dashboard/:unique_code', async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
+
 app.get('/api/admin/affiliates', requireAdmin, async (req, res) => {
   try {
     const { data: influencers, error: infError } = await supabase
