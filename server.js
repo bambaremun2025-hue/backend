@@ -3395,6 +3395,61 @@ app.post('/api/track-affiliate-premium', async (req, res) => {
   }
 });
 
+app.post('/api/webhooks/user-premium', async (req, res) => {
+  try {
+    const { user_id, subscription_amount = 15000 } = req.body;
+    
+    console.log(`🔔 [AFFILIATE] User ${user_id} devient premium`);
+
+    const { data: referral } = await supabase
+      .from('affiliate_referrals')
+      .select('*, affiliate_influencers(*)')
+      .eq('referred_user_id', user_id)
+      .order('created_at', { ascending: false })
+      .limit(1);
+    
+    if (!referral || referral.length === 0) {
+      return res.json({ success: false, error: 'No referral found' });
+    }
+    
+    const ref = referral[0];
+
+    const updates = {
+      current_status: 'premium',
+      subscription_type: 'premium',
+      premium_converted_at: new Date().toISOString(),
+      subscription_amount: subscription_amount,
+      status: 'approved'
+    };
+
+    const influencer = ref.affiliate_influencers;
+    if (influencer) {
+      const commissionAmount = subscription_amount * (influencer.commission_rate / 100);
+      updates.commission = commissionAmount;
+    
+      await supabase
+        .from('affiliate_influencers')
+        .update({
+          total_earnings: (influencer.total_earnings || 0) + commissionAmount
+        })
+        .eq('id', influencer.id);
+    }
+    
+    await supabase
+      .from('affiliate_referrals')
+      .update(updates)
+      .eq('id', ref.id);
+    
+    console.log(`✅ [AFFILIATE] Referral ${ref.id} marqué comme premium, commission: ${updates.commission || 0}`);
+    
+    res.json({ success: true, commission: updates.commission });
+    
+  } catch (error) {
+    console.error('❌ [AFFILIATE] Error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.put('/api/affiliate/:id', requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
