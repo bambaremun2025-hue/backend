@@ -41,7 +41,14 @@ app.use(cors({
     ],
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'Origin', 'Accept', 'X-Requested-With']
+    allowedHeaders: [
+        'Content-Type', 
+        'Authorization', 
+        'Origin', 
+        'Accept', 
+        'X-Requested-With',
+        'expires' 
+    ]
 }));
 
 const requireAuth = async (req, res, next) => {
