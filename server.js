@@ -3327,7 +3327,9 @@ app.post('/api/track-affiliate-status-update', async (req, res) => {
     if (new_status === 'premium') {
       updates.premium_converted_at = new Date().toISOString();
       updates.subscription_type = 'premium';
-      updates.subscription_amount = subscription_amount;
+      
+      const SUBSCRIPTION_PRICE = 15000;
+      updates.subscription_amount = SUBSCRIPTION_PRICE;
       
       const influencer = referral.affiliate_influencers;
       console.log('💰 [TRACK] Influencer found:', {
@@ -3337,9 +3339,9 @@ app.post('/api/track-affiliate-status-update', async (req, res) => {
       });
       
       if (influencer) {
-        const commissionAmount = subscription_amount * (influencer.commission_rate / 100);
+        const commissionAmount = SUBSCRIPTION_PRICE * (influencer.commission_rate / 100);
         console.log('💰 [TRACK] Commission calculation:', {
-          subscription_amount,
+          subscription_price: SUBSCRIPTION_PRICE,
           commission_rate: influencer.commission_rate,
           commission_amount: commissionAmount
         });
@@ -3402,13 +3404,14 @@ app.post('/api/track-affiliate-premium', async (req, res) => {
     if (!referral) return res.json({ success: false });
     
     const influencer = referral.affiliate_influencers;
-    const commissionAmount = subscription_amount * (influencer.commission_rate / 100);
+    const SUBSCRIPTION_PRICE = 15000;
+    const commissionAmount = SUBSCRIPTION_PRICE * (influencer.commission_rate / 100);
     
     await supabase
       .from('affiliate_referrals')
       .update({
         subscription_type: 'premium',
-        subscription_amount: subscription_amount,
+        subscription_amount: SUBSCRIPTION_PRICE,
         commission_amount: commissionAmount,
         commission_type: 'first_month',
         month_reference: new Date().toISOString().slice(0, 7),
@@ -4153,13 +4156,14 @@ app.post('/api/webhooks/naboostart', async (req, res) => {
       console.log(`✅ Premium activé pour user: ${transaction.user_id}`);
       
       try {
+        const SUBSCRIPTION_PRICE = 15000;
         await fetch('https://backend-s05x.onrender.com/api/track-affiliate-status-update', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             user_id: transaction.user_id,
             new_status: 'premium',
-            subscription_amount: transaction.amount
+            subscription_amount: SUBSCRIPTION_PRICE
           })
         });
         console.log('✅ Affiliation premium trackée');
