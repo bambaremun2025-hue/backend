@@ -4073,6 +4073,64 @@ app.delete('/api/affiliate/:id', requireAdmin, async (req, res) => {
   }
 });
 
+app.post('/api/affiliate/:influencer_id/reset-pending', requireAdmin, async (req, res) => {
+  try {
+    const { influencer_id } = req.params;
+    
+    const { data: pendingReferrals } = await supabase
+      .from('affiliate_referrals')
+      .select('id, commission')
+      .eq('influencer_id', influencer_id)
+      .eq('status', 'approved')
+      .is('paid_date', null);
+
+    let totalPaid = 0;
+    
+    if (pendingReferrals && pendingReferrals.length > 0) {
+      await supabase
+        .from('affiliate_referrals')
+        .update({
+          status: 'paid',
+          paid_date: new Date().toISOString()
+        })
+        .eq('influencer_id', influencer_id)
+        .eq('status', 'approved')
+        .is('paid_date', null);
+      
+      totalPaid = pendingReferrals.reduce((sum, r) => sum + (r.commission || 0), 0);
+    }
+
+    const { data: influencer } = await supabase
+      .from('affiliate_influencers')
+      .select('total_earnings, pending_commission')
+      .eq('id', influencer_id)
+      .single();
+
+    if (influencer) {
+      const newTotalEarnings = (influencer.total_earnings || 0) + totalPaid;
+      const newPending = Math.max(0, (influencer.pending_commission || 0) - totalPaid);
+      
+      await supabase
+        .from('affiliate_influencers')
+        .update({
+          total_earnings: newTotalEarnings,
+          pending_commission: newPending,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', influencer_id);
+    }
+
+    res.json({
+      success: true,
+      paid_count: pendingReferrals?.length || 0,
+      total_paid: totalPaid
+    });
+
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.post('/api/subscription/initiate-payment', requireAuth, async (req, res) => {
   try {
     const userId = req.user.userId;
