@@ -3293,43 +3293,21 @@ app.post('/api/track-affiliate-signup', async (req, res) => {
 
 app.post('/api/track-affiliate-status-update', async (req, res) => {
   try {
-    console.log('🔔 [TRACK] Track affiliate status update START:', req.body);
-    
     const { user_id, new_status, subscription_amount } = req.body;
     
-    console.log('🔍 [TRACK] Looking for referral for user:', user_id);
-    
-    const { data: referrals, error } = await supabase
+    const { data: referrals } = await supabase
       .from('affiliate_referrals')
       .select('*, affiliate_influencers(*)')
       .eq('referred_user_id', user_id)
       .order('created_at', { ascending: false })
       .limit(1);
     
-    console.log('📊 [TRACK] Supabase query result:', {
-      referralsCount: referrals?.length,
-      error: error?.message,
-      firstReferralId: referrals?.[0]?.id
-    });
-    
     if (!referrals || referrals.length === 0) {
-      console.log('❌ [TRACK] No referral found for user:', user_id);
-      return res.json({ success: false, error: 'No referral found' });
+      return res.json({ success: false });
     }
     
     const referral = referrals[0];
-    console.log('✅ [TRACK] Using referral:', {
-      id: referral.id,
-      current_status: referral.current_status,
-      influencer_id: referral.influencer_id,
-      affiliate_name: referral.affiliate_name
-    });
-    
-    const updates = {
-      current_status: new_status
-    };
-    
-    console.log('📝 [TRACK] Planned updates:', updates);
+    const updates = { current_status: new_status };
     
     if (new_status === 'premium') {
       updates.premium_converted_at = new Date().toISOString();
@@ -3339,61 +3317,35 @@ app.post('/api/track-affiliate-status-update', async (req, res) => {
       updates.subscription_amount = SUBSCRIPTION_PRICE;
       
       const influencer = referral.affiliate_influencers;
-      console.log('💰 [TRACK] Influencer found:', {
-        id: influencer?.id,
-        name: influencer?.name,
-        commission_rate: influencer?.commission_rate
-      });
       
       if (influencer) {
         const commissionAmount = SUBSCRIPTION_PRICE * (influencer.commission_rate / 100);
-        console.log('💰 [TRACK] Commission calculation:', {
-          subscription_price: SUBSCRIPTION_PRICE,
-          commission_rate: influencer.commission_rate,
-          commission_amount: commissionAmount
-        });
         
         updates.commission = commissionAmount;
-        updates.status = 'approved';
-        
-        console.log('📈 [TRACK] Updating influencer earnings...');
-        const { error: infError } = await supabase
+        updates.status = 'approved'; 
+      
+        await supabase
           .from('affiliate_influencers')
           .update({
             total_earnings: (influencer.total_earnings || 0) + commissionAmount
           })
           .eq('id', influencer.id);
-        
-        if (infError) {
-          console.log('❌ [TRACK] Influencer update error:', infError.message);
-        } else {
-          console.log('✅ [TRACK] Influencer earnings updated');
-        }
       }
     }
-    
-    else if (new_status === 'expired') {
-      updates.status = 'expired';
+  
+    else if (new_status === 'trial') {
+      updates.status = 'tracked';
+      updates.commission = 0; 
     }
     
-    console.log('🔄 [TRACK] Final updates to apply:', updates);
-    
-    const { error: updateError } = await supabase
+    await supabase
       .from('affiliate_referrals')
       .update(updates)
       .eq('id', referral.id);
     
-    if (updateError) {
-      console.log('❌ [TRACK] Update error:', updateError.message);
-      throw updateError;
-    }
-    
-    console.log('🎯 [TRACK] Updates applied successfully!');
-    
     res.json({ success: true });
     
   } catch (error) {
-    console.error('💥 [TRACK] Error:', error.message);
     res.status(500).json({ error: error.message });
   }
 });
