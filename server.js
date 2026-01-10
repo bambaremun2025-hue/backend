@@ -3399,8 +3399,6 @@ app.post('/api/webhooks/user-premium', async (req, res) => {
   try {
     const { user_id, subscription_amount = 15000 } = req.body;
     
-    console.log(`🔔 [AFFILIATE] User ${user_id} devient premium`);
-
     const { data: referral } = await supabase
       .from('affiliate_referrals')
       .select('*, affiliate_influencers(*)')
@@ -3409,24 +3407,24 @@ app.post('/api/webhooks/user-premium', async (req, res) => {
       .limit(1);
     
     if (!referral || referral.length === 0) {
-      return res.json({ success: false, error: 'No referral found' });
+      return res.json({ success: false });
     }
     
     const ref = referral[0];
-
+    
     const updates = {
-      current_status: 'premium',
+      current_status: 'premium', 
       subscription_type: 'premium',
       premium_converted_at: new Date().toISOString(),
       subscription_amount: subscription_amount,
       status: 'approved'
     };
-
+    
     const influencer = ref.affiliate_influencers;
     if (influencer) {
       const commissionAmount = subscription_amount * (influencer.commission_rate / 100);
       updates.commission = commissionAmount;
-    
+      
       await supabase
         .from('affiliate_influencers')
         .update({
@@ -3440,12 +3438,9 @@ app.post('/api/webhooks/user-premium', async (req, res) => {
       .update(updates)
       .eq('id', ref.id);
     
-    console.log(`✅ [AFFILIATE] Referral ${ref.id} marqué comme premium, commission: ${updates.commission || 0}`);
-    
-    res.json({ success: true, commission: updates.commission });
+    res.json({ success: true });
     
   } catch (error) {
-    console.error('❌ [AFFILIATE] Error:', error);
     res.status(500).json({ error: error.message });
   }
 });
