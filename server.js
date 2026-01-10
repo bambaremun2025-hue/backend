@@ -3941,7 +3941,8 @@ app.get('/api/affiliate/:unique_code/full-analytics', requireAdmin, async (req, 
       },
       dashboard: dashboardData,
       analytics: {
-        summary: dashboardData.stats,
+        summary: dashboardData.stats, 
+        referrals: referrals, 
         monthly: Object.values(monthlyStats).sort((a, b) => b.month.localeCompare(a.month)),
         premium_users: premiumReferrals.map(r => ({
           email: r.referred_email,
