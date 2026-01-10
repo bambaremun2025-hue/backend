@@ -3805,58 +3805,44 @@ app.get('/api/affiliate/:influencer_id/analytics', requireAdmin, async (req, res
     const { influencer_id } = req.params;
     const { period = 'all' } = req.query;
     
-    const { data: referrals, error: refError } = await supabase
-      .from('affiliate_referrals')
-      .select(`
-        *,
-        users (*)
-      `)
-      .eq('influencer_id', influencer_id)
-      .order('created_at', { ascending: false });
+    const { data: influencer } = await supabase
+      .from('affiliate_influencers')
+      .select('unique_code')
+      .eq('id', influencer_id)
+      .single();
     
-    if (refError) throw refError;
+    if (!influencer) {
+      return res.status(404).json({ error: 'Influencer non trouvé' });
+    }
     
-    const users = referrals.map(r => r.users).filter(Boolean);
-    
-    const stats = {
-      totalReferrals: users.length,
-      trialUsers: users.filter(u => u.subscription_type === 'trial').length,
-      premiumUsers: users.filter(u => u.subscription_type === 'premium').length,
-      activeTrials: users.filter(u => 
-        u.subscription_type === 'trial' && 
-        new Date(u.trial_ends_at) > new Date()
-      ).length,
-      expiredTrials: users.filter(u => 
-        u.subscription_type === 'trial' && 
-        new Date(u.trial_ends_at) <= new Date()
-      ).length,
-      conversionRate: users.length > 0 
-        ? (users.filter(u => u.subscription_type === 'premium').length / users.length * 100).toFixed(1)
-        : 0,
-      commissionsDue: referrals
-        .filter(r => r.status === 'approved' && !r.paid_date)
-        .reduce((sum, r) => sum + (r.commission_amount || 0), 0)
-    };
-    
-    const recentActivity = referrals.slice(0, 50).map(r => ({
-      userId: r.referred_user_id,
-      userEmail: r.users?.email,
-      userName: r.users?.full_name,
-      userShop: r.users?.shop_name,
-      subscriptionType: r.users?.subscription_type,
-      trialEndsAt: r.users?.trial_ends_at,
-      subscriptionEndDate: r.users?.subscription_end_date,
-      referralDate: r.created_at,
-      commissionAmount: r.commission_amount,
-      commissionStatus: r.status
-    }));
+    const dashboardResponse = await fetch(
+      `https://backend-s05x.onrender.com/api/affiliate/dashboard/${influencer.unique_code}`
+    );
+    const dashboardData = await dashboardResponse.json();
     
     res.json({
       success: true,
       influencer_id,
-      stats,
-      recentActivity,
-      totalReferrals: referrals.length
+      unique_code: influencer.unique_code,
+      stats: dashboardData.stats,
+      referrals: dashboardData.referrals,
+      recentActivity: dashboardData.referrals.map(r => ({
+        userId: r.referred_user_id,
+        userEmail: r.referred_email,
+        subscriptionType: r.subscription_type,
+        referralDate: r.created_at,
+        commissionAmount: r.commission,
+        commissionStatus: r.status,
+        premiumConvertedAt: r.premium_converted_at
+      })),
+      summary: {
+        total_referrals: dashboardData.stats.total_signups,
+        premium_conversions: dashboardData.stats.premium_conversions,
+        conversion_rate: dashboardData.stats.conversion_rate,
+        total_earned: dashboardData.stats.total_earned,
+        pending_commission: dashboardData.stats.pending_commission,
+        active_trials: dashboardData.stats.active_trials
+      }
     });
     
   } catch (error) {
@@ -3868,41 +3854,106 @@ app.get('/api/affiliate/:influencer_id/users', requireAdmin, async (req, res) =>
   try {
     const { influencer_id } = req.params;
     
-    const { data: referrals, error } = await supabase
-      .from('affiliate_referrals')
-      .select(`
-        id,
-        created_at,
-        status,
-        commission_amount,
-        users (
-          id,
-          email,
-          full_name,
-          shop_name,
-          subscription_type,
-          trial_ends_at,
-          subscription_end_date,
-          created_at as user_created_at
-        )
-      `)
-      .eq('influencer_id', influencer_id)
-      .order('created_at', { ascending: false });
+    const { data: influencer } = await supabase
+      .from('affiliate_influencers')
+      .select('unique_code')
+      .eq('id', influencer_id)
+      .single();
     
-    if (error) throw error;
+    if (!influencer) {
+      return res.status(404).json({ error: 'Influencer non trouvé' });
+    }
     
-    const users = referrals.map(r => ({
-      referralId: r.id,
-      referralDate: r.created_at,
-      commissionAmount: r.commission_amount,
-      commissionStatus: r.status,
-      ...r.users
-    })).filter(u => u.id);
+    const dashboardResponse = await fetch(
+      `https://backend-s05x.onrender.com/api/affiliate/dashboard/${influencer.unique_code}`
+    );
+    const dashboardData = await dashboardResponse.json();
     
     res.json({
       success: true,
-      users: users,
-      count: users.length
+      users: dashboardData.referrals.map(r => ({
+        referralId: r.id,
+        referralDate: r.created_at,
+        commissionAmount: r.commission,
+        commissionStatus: r.status,
+        email: r.referred_email,
+        subscriptionType: r.subscription_type,
+        trialEndsAt: r.trial_started_at ? new Date(r.trial_started_at).toLocaleDateString('fr-FR') : null,
+        premiumConvertedAt: r.premium_converted_at ? new Date(r.premium_converted_at).toLocaleDateString('fr-FR') : null
+      })),
+      count: dashboardData.referrals.length
+    });
+    
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/affiliate/:unique_code/full-analytics', requireAdmin, async (req, res) => {
+  try {
+    const { unique_code } = req.params;
+    
+    const { data: influencer } = await supabase
+      .from('affiliate_influencers')
+      .select('*')
+      .eq('unique_code', unique_code)
+      .single();
+    
+    if (!influencer) {
+      return res.status(404).json({ error: 'Affilié non trouvé' });
+    }
+    
+    const dashboardResponse = await fetch(
+      `https://backend-s05x.onrender.com/api/affiliate/dashboard/${unique_code}`
+    );
+    const dashboardData = await dashboardResponse.json();
+    
+    const referrals = dashboardData.referrals || [];
+    const premiumReferrals = referrals.filter(r => r.status === 'approved');
+    const trialReferrals = referrals.filter(r => r.current_status === 'trial');
+    
+    const monthlyStats = {};
+    referrals.forEach(r => {
+      const month = r.created_at.substring(0, 7);
+      if (!monthlyStats[month]) {
+        monthlyStats[month] = {
+          month,
+          referrals: 0,
+          premiums: 0,
+          commissions: 0
+        };
+      }
+      
+      monthlyStats[month].referrals++;
+      if (r.status === 'approved') {
+        monthlyStats[month].premiums++;
+        monthlyStats[month].commissions += r.commission || 0;
+      }
+    });
+    
+    res.json({
+      success: true,
+      influencer: {
+        id: influencer.id,
+        name: influencer.name,
+        email: influencer.email,
+        unique_code: influencer.unique_code
+      },
+      dashboard: dashboardData,
+      analytics: {
+        summary: dashboardData.stats,
+        monthly: Object.values(monthlyStats).sort((a, b) => b.month.localeCompare(a.month)),
+        premium_users: premiumReferrals.map(r => ({
+          email: r.referred_email,
+          converted_at: r.premium_converted_at,
+          commission: r.commission
+        })),
+        trial_users: trialReferrals.map(r => ({
+          email: r.referred_email,
+          trial_ends: r.trial_started_at ? 
+            new Date(new Date(r.trial_started_at).getTime() + 14 * 24 * 60 * 60 * 1000).toISOString() : null
+        }))
+      }
     });
     
   } catch (error) {
