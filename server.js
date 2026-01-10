@@ -4218,13 +4218,9 @@ const naboopayResponse = await fetch('https://api.naboostart.com/v1/payments/ini
 
 app.post('/api/webhooks/naboostart', async (req, res) => {
   try {
-    console.log('🔔 Webhook NabooStart reçu:', req.body);
-    
     const { event, data } = req.body;
     
     if (event === 'payment.success') {
-      console.log('💰 Paiement réussi détecté:', data);
-      
       const paymentId = data.payment_id;
       
       let { data: transaction } = await supabase
@@ -4232,9 +4228,8 @@ app.post('/api/webhooks/naboostart', async (req, res) => {
         .select('*')
         .eq('naboopay_payment_id', paymentId)
         .single();
- 
+
       if (!transaction) {
-        console.log('⚠️ Transaction non trouvée par payment_id, essaie par id...');
         const { data: txByTransactionId } = await supabase
           .from('payment_transactions')
           .select('*')
@@ -4243,21 +4238,15 @@ app.post('/api/webhooks/naboostart', async (req, res) => {
         
         if (txByTransactionId) {
           transaction = txByTransactionId;
-          console.log('✅ Transaction trouvée par id:', transaction.id);
         }
       }
    
       if (!transaction) {
-        console.log('❌ Transaction non trouvée');
         return res.json({ success: false });
       }
       
-      console.log('🎯 Transaction trouvée:', transaction);
-      
       const subscriptionEnd = new Date();
       subscriptionEnd.setMonth(subscriptionEnd.getMonth() + transaction.subscription_months);
-      
-      console.log(`📅 Date fin abonnement: ${subscriptionEnd.toISOString()}`);
       
       const { error: updateError } = await supabase
         .from('users')
@@ -4273,35 +4262,34 @@ app.post('/api/webhooks/naboostart', async (req, res) => {
         .eq('id', transaction.user_id);
 
       if (updateError) {
-        console.error('❌ Erreur UPDATE:', updateError);
         throw updateError;
       }
       
-      console.log(`✅ Premium activé pour user: ${transaction.user_id}`);
+      await fetch('https://backend-s05x.onrender.com/api/webhooks/user-premium', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: transaction.user_id,
+          subscription_amount: 15000
+        })
+      }).catch(err => console.log('Tracking affiliate échoué:', err));
       
-      try {
-        const SUBSCRIPTION_PRICE = 15000;
-        await fetch('https://backend-s05x.onrender.com/api/track-affiliate-status-update', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            user_id: transaction.user_id,
-            new_status: 'premium',
-            subscription_amount: SUBSCRIPTION_PRICE
-          })
-        });
-        console.log('✅ Affiliation premium trackée');
-      } catch (affiliateError) {
-        console.log('⚠️ Erreur tracking affiliation:', affiliateError.message);
-      }
-      
-      console.log('🎉 Webhook terminé avec succès');
+      const SUBSCRIPTION_PRICE = 15000;
+      await fetch('https://backend-s05x.onrender.com/api/track-affiliate-status-update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: transaction.user_id,
+          new_status: 'premium',
+          subscription_amount: SUBSCRIPTION_PRICE
+        })
+      }).catch(err => console.log('Tracking affiliation échoué:', err));
     }
     
     res.json({ success: true });
     
   } catch (error) {
-    console.error('💥 Webhook error:', error);
+    console.error('Webhook error:', error);
     res.status(500).json({ error: error.message });
   }
 });
