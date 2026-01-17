@@ -3148,12 +3148,16 @@ app.delete('/api/admin/users/:user_id', requireAdmin, async (req, res) => {
     if (userToDelete?.email === 'samaboutiksen@gmail.com') {
       return res.status(400).json({ error: 'Impossible de supprimer admin principal' });
     }
-    
+
+    await supabase.from('payment_transactions').delete().eq('user_id', user_id);
+  
     await supabase.from('products').delete().eq('user_id', user_id);
     await supabase.from('sales').delete().eq('user_id', user_id);
     await supabase.from('online_orders').delete().eq('user_id', user_id);
     await supabase.from('custom_domains').delete().eq('user_id', user_id);
     await supabase.from('affiliate_referrals').delete().eq('referred_user_id', user_id);
+  
+    await supabase.from('user_payment_settings').delete().eq('user_id', user_id);
     
     const { error: deleteError } = await supabase
       .from('users')
@@ -3168,7 +3172,6 @@ app.delete('/api/admin/users/:user_id', requireAdmin, async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
-
 app.post('/api/admin/users/bulk-delete', requireAdmin, async (req, res) => {
   try {
     const { user_ids } = req.body;
