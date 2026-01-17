@@ -1211,8 +1211,19 @@ app.post('/api/products/with-image', requireAuth, async (req, res) => {
 });
 app.post('/api/products/upload', requireAuth, async (req, res) => {
   try {
+    console.log('📸 [UPLOAD] Début upload image');
+    
     const userId = req.user.userId;
     const { imageBase64, productId, fileName, mimeType } = req.body;
+
+    console.log('📦 [UPLOAD] Données reçues:', {
+      userId,
+      productId,
+      hasImage: !!imageBase64,
+      imageSize: imageBase64?.length,
+      fileName,
+      mimeType
+    });
 
     if (!imageBase64) {
       return res.status(400).json({ error: 'Données image manquantes' });
@@ -1235,6 +1246,7 @@ app.post('/api/products/upload', requireAuth, async (req, res) => {
     let buffer;
     try {
       buffer = Buffer.from(base64Data, 'base64');
+      console.log('📊 [UPLOAD] Buffer créé:', buffer.length, 'bytes');
     } catch (bufferError) {
       return res.status(400).json({ error: 'Données base64 corrompues' });
     }
@@ -1248,50 +1260,84 @@ app.post('/api/products/upload', requireAuth, async (req, res) => {
     const fileExtension = mimeType === 'image/png' ? 'png' : 'jpg';
     const uniqueFileName = `products/${userId}/${productId}.${fileExtension}`;
 
+    console.log('📁 [UPLOAD] Nom fichier:', uniqueFileName);
+
     const { data: uploadData, error: uploadError } = await supabaseAdmin.storage
       .from('product-images')
       .upload(uniqueFileName, buffer, {
         contentType: mimeType || 'image/jpeg',
-        upsert: true
+        upsert: true,
+        cacheControl: '3600'
       });
 
     if (uploadError) {
+      console.error('❌ [UPLOAD] Erreur upload storage:', uploadError);
       return res.status(500).json({ 
         error: 'Erreur upload storage: ' + uploadError.message 
       });
     }
 
+    console.log('✅ [UPLOAD] Upload storage réussi:', uploadData);
+
     const { data: { publicUrl } } = supabaseAdmin.storage
       .from('product-images')
       .getPublicUrl(uniqueFileName);
 
-    const { error: updateError } = await supabaseAdmin
+    console.log('🔗 [UPLOAD] URL générée:', publicUrl);
+
+    const { data: updatedProduct, error: updateError } = await supabaseAdmin
       .from('products')
       .update({ 
         image_url: publicUrl,
         updated_at: new Date().toISOString()
       })
       .eq('id', productId)
-      .eq('user_id', userId);
+      .eq('user_id', userId)
+      .select();
 
+    console.log('🔄 [UPLOAD] Update résultat:', {
+      success: !updateError,
+      error: updateError?.message,
+      rowsUpdated: updatedProduct?.length,
+      image_url: updatedProduct?.[0]?.image_url
+    });
+    
     if (updateError) {
-      return res.status(500).json({ 
-        error: 'Erreur mise à jour produit: ' + updateError.message 
-      });
+      console.error('❌ [UPLOAD] Erreur update BDD:', updateError);
+      return res.status(500).json({ error: 'Erreur mise à jour produit: ' + updateError.message });
     }
-
-    res.json({ 
-      success: true, 
-      imageUrl: publicUrl,
+  
+    if (!updatedProduct || updatedProduct.length === 0) {
+      console.error('❌ [UPLOAD] Aucun produit mis à jour');
+      return res.status(404).json({ error: 'Produit non trouvé après update' });
+    }
+    
+    const finalImageUrl = updatedProduct[0].image_url;
+    console.log('🎯 [UPLOAD] Final image_url sauvegardé:', finalImageUrl);
+    
+    try {
+      const imgCheck = await fetch(publicUrl, { method: 'HEAD' });
+      console.log('🌐 [UPLOAD] Image accessible:', imgCheck.ok, imgCheck.status);
+    } catch (imgError) {
+      console.warn('⚠️ [UPLOAD] Image non accessible:', imgError.message);
+    }
+    
+    res.json({
+      success: true,
+      imageUrl: finalImageUrl,
+      product: updatedProduct[0],
       message: 'Image sauvegardée avec succès'
     });
-
+    
   } catch (error) {
+    console.error('💥 [UPLOAD] Erreur complète:', error);
     res.status(500).json({ 
-      error: 'Erreur serveur: ' + error.message
+      error: 'Erreur serveur: ' + error.message,
+      stack: error.stack?.split('\n')[0]
     });
   }
 });
+
 app.put('/api/products/:id', requireAuth, async (req, res) => {
   try {
     const userId = req.user.userId;
