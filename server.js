@@ -52,16 +52,21 @@ app.use(cors({
 }));
 
 const requireAuth = async (req, res, next) => {
+    console.log('🔐 [AUTH] Middleware triggered for:', req.path);
+    
     const authHeader = req.headers.authorization;
     
     if (!authHeader) {
+        console.log('❌ [AUTH] No authorization header');
         return res.status(401).json({ error: 'Token manquant' });
     }
     
     const token = authHeader.split(' ')[1];
+    console.log('🔐 [AUTH] Token received:', token?.substring(0, 20) + '...');
     
     try {
         const decoded = jwt.verify(token, process.env.JWT_SECRET || 'default-secret');
+        console.log('✅ [AUTH] Token decoded:', { userId: decoded.userId, email: decoded.email });
 
         const { data: user, error } = await supabase
             .from('users')
@@ -69,18 +74,27 @@ const requireAuth = async (req, res, next) => {
             .eq('id', decoded.userId)
             .single();
 
+        console.log('👤 [AUTH] User from DB:', { user, error: error?.message });
+
         if (error || !user) {
+            console.log('❌ [AUTH] User not found in DB');
             return res.status(403).json({ error: 'Utilisateur non trouvé' });
         }
 
-        if (user.role !== 'admin' && user.role !== 'user') {
+        console.log('🎭 [AUTH] User role:', user.role);
+        
+        const allowedRoles = ['admin', 'user', 'affiliate', null, undefined];
+        if (!allowedRoles.includes(user.role)) {
+            console.log('❌ [AUTH] Role not allowed:', user.role);
             return res.status(403).json({ error: 'Rôle non autorisé' });
         }
         
         req.user = decoded;
+        console.log('✅ [AUTH] Authentication successful');
         next();
     } catch (error) {
-        return res.status(403).json({ error: 'Token invalide' });
+        console.error('❌ [AUTH] Token verification failed:', error.message);
+        return res.status(403).json({ error: 'Token invalide: ' + error.message });
     }
 };
 
@@ -4854,6 +4868,56 @@ app.get('/api/debug/user-subscription/:user_id', async (req, res) => {
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
+});
+
+app.get('/api/debug/check-auth', async (req, res) => {
+    const authHeader = req.headers.authorization;
+    
+    if (!authHeader) {
+        return res.json({ success: false, error: 'No token' });
+    }
+    
+    const token = authHeader.split(' ')[1];
+    
+    try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET || 'default-secret');
+        
+        const { data: user, error } = await supabase
+            .from('users')
+            .select('*')
+            .eq('id', decoded.userId)
+            .single();
+        
+        if (error || !user) {
+            return res.json({ 
+                success: false, 
+                error: 'User not found in DB',
+                decoded: decoded 
+            });
+        }
+        
+        res.json({ 
+            success: true, 
+            decoded: decoded,
+            user: {
+                id: user.id,
+                email: user.email,
+                role: user.role,
+                subscription_type: user.subscription_type,
+                is_premium: user.is_premium
+            },
+            tokenInfo: {
+                expiresAt: new Date(decoded.exp * 1000).toISOString(),
+                issuedAt: new Date(decoded.iat * 1000).toISOString()
+            }
+        });
+    } catch (error) {
+        res.json({ 
+            success: false, 
+            error: 'Token invalid',
+            message: error.message 
+        });
+    }
 });
 
 app.listen(PORT, '0.0.0.0', () => {
