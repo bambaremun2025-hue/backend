@@ -4276,78 +4276,244 @@ const naboopayResponse = await fetch('https://api.naboostart.com/v1/payments/ini
 
 app.post('/api/webhooks/naboostart', async (req, res) => {
   try {
+    console.log('🔔 [NABOOPAY WEBHOOK] Received:', req.body);
+    
     const { event, data } = req.body;
     
     if (event === 'payment.success') {
       const paymentId = data.payment_id;
-      
-      let { data: transaction } = await supabase
+      console.log('💰 [NABOOPAY] Payment success ID:', paymentId);
+ 
+      let { data: transaction, error: findError } = await supabase
         .from('payment_transactions')
         .select('*')
         .eq('naboopay_payment_id', paymentId)
         .single();
 
       if (!transaction) {
-        const { data: txByTransactionId } = await supabase
+        console.log('🔍 [NABOOPAY] Not found by naboopay_id, trying internal ID...');
+        const { data: txByInternalId } = await supabase
           .from('payment_transactions')
           .select('*')
           .eq('id', paymentId)
           .single();
         
-        if (txByTransactionId) {
-          transaction = txByTransactionId;
+        if (txByInternalId) {
+          transaction = txByInternalId;
+          console.log('✅ [NABOOPAY] Found by internal ID:', paymentId);
         }
       }
-   
-      if (!transaction) {
-        return res.json({ success: false });
-      }
-      
-      const subscriptionEnd = new Date();
-      subscriptionEnd.setMonth(subscriptionEnd.getMonth() + transaction.subscription_months);
-      
-      const { error: updateError } = await supabase
-        .from('users')
-        .update({
-          subscription_type: 'premium',
-          subscription_end_date: subscriptionEnd.toISOString(),
-          max_products: 99999,
-          max_online_sales: 99999,
-          features_unlocked: true,
-          is_premium: true,
-          activated_at: new Date().toISOString()
-        })
-        .eq('id', transaction.user_id);
 
-      if (updateError) {
-        throw updateError;
+      if (!transaction) {
+        console.log('🆕 [NABOOPAY] Creating new transaction for payment:', paymentId);
+        
+        const { data: newTransaction, error: createError } = await supabase
+          .from('payment_transactions')
+          .insert([{
+            naboopay_payment_id: paymentId,
+            amount: data.amount ? data.amount / 100 : 15000, 
+            status: 'completed',
+            payment_method: 'naboopay',
+            subscription_type: 'premium',
+            subscription_months: 1,
+            metadata: data,
+            created_at: new Date().toISOString()
+          }])
+          .select();
+          
+        if (createError) {
+          console.error('❌ [NABOOPAY] Create error:', createError);
+        } else {
+          transaction = newTransaction[0];
+          console.log('✅ [NABOOPAY] New transaction created:', transaction.id);
+        }
+      }
+    
+      if (transaction) {
+        console.log('🔄 [NABOOPAY] Updating transaction status:', transaction.id);
+        
+        const { error: updateError } = await supabase
+          .from('payment_transactions')
+          .update({
+            status: 'completed',
+            naboopay_status: 'success',
+            naboopay_payment_id: paymentId, 
+            updated_at: new Date().toISOString(),
+            metadata: data
+          })
+          .eq('id', transaction.id);
+
+        if (updateError) {
+          console.error('❌ [NABOOPAY] Update error:', updateError);
+        } else {
+          console.log('✅ [NABOOPAY] Transaction marked as completed');
+        }
+        if (transaction.user_id) {
+          console.log('👤 [NABOOPAY] Activating user:', transaction.user_id);
+          
+          const subscriptionEnd = new Date();
+          subscriptionEnd.setMonth(subscriptionEnd.getMonth() + (transaction.subscription_months || 1));
+          
+          const { error: userError } = await supabase
+            .from('users')
+            .update({
+              subscription_type: 'premium',
+              subscription_end_date: subscriptionEnd.toISOString(),
+              is_premium: true,
+              activated_at: new Date().toISOString()
+            })
+            .eq('id', transaction.user_id);
+
+          if (userError) {
+            console.error('❌ [NABOOPAY] User activation error:', userError);
+          } else {
+            console.log('✅ [NABOOPAY] User activated successfully');
+          }
+  
+          try {
+            await fetch('https://backend-s05x.onrender.com/api/webhooks/user-premium', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                user_id: transaction.user_id,
+                subscription_amount: 15000
+              })
+            });
+            
+            await fetch('https://backend-s05x.onrender.com/api/track-affiliate-status-update', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                user_id: transaction.user_id,
+                new_status: 'premium',
+                subscription_amount: 15000
+              })
+            });
+            
+          } catch (affiliateError) {
+            console.log('⚠️ [NABOOPAY] Affiliate tracking failed:', affiliateError.message);
+          }
+        } else {
+          console.log('⚠️ [NABOOPAY] No user_id in transaction');
+        }
+      } else {
+        console.log('❌ [NABOOPAY] No transaction to update');
       }
       
-      await fetch('https://backend-s05x.onrender.com/api/webhooks/user-premium', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          user_id: transaction.user_id,
-          subscription_amount: 15000
-        })
-      }).catch(err => console.log('Tracking affiliate échoué:', err));
+      res.json({ success: true, message: 'Payment processed' });
       
-      const SUBSCRIPTION_PRICE = 15000;
-      await fetch('https://backend-s05x.onrender.com/api/track-affiliate-status-update', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          user_id: transaction.user_id,
-          new_status: 'premium',
-          subscription_amount: SUBSCRIPTION_PRICE
+    } else if (event === 'payment.pending') {
+      console.log('⏳ [NABOOPAY] Payment pending:', data.payment_id);
+  
+      await supabase
+        .from('payment_transactions')
+        .update({
+          status: 'pending',
+          naboopay_status: 'pending',
+          updated_at: new Date().toISOString()
         })
-      }).catch(err => console.log('Tracking affiliation échoué:', err));
+        .eq('naboopay_payment_id', data.payment_id);
+      
+      res.json({ success: true });
+      
+    } else if (event === 'payment.failed') {
+      console.log('❌ [NABOOPAY] Payment failed:', data.payment_id);
+      
+      await supabase
+        .from('payment_transactions')
+        .update({
+          status: 'failed',
+          naboopay_status: 'failed',
+          updated_at: new Date().toISOString()
+        })
+        .eq('naboopay_payment_id', data.payment_id);
+      
+      res.json({ success: true });
+      
+    } else {
+      console.log('📝 [NABOOPAY] Other event:', event, data);
+      res.json({ success: true });
     }
     
-    res.json({ success: true });
+  } catch (error) {
+    console.error('💥 [NABOOPAY WEBHOOK] Error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/admin/sync-naboopay', requireAdmin, async (req, res) => {
+  try {
+    console.log('🔄 [ADMIN] Manual NabooPay sync started');
+
+    const { data: paymentsWithoutId } = await supabase
+      .from('payment_transactions')
+      .select('*')
+      .is('naboopay_payment_id', null)
+      .order('created_at', { ascending: false });
+
+    console.log(`🔍 [ADMIN] Found ${paymentsWithoutId?.length || 0} payments without NabooPay ID`);
+
+    const { data: paymentsWithId } = await supabase
+      .from('payment_transactions')
+      .select('*')
+      .not('naboopay_payment_id', 'is', null)
+      .order('created_at', { ascending: false });
+
+    const stats = {
+      total_payments: (paymentsWithoutId?.length || 0) + (paymentsWithId?.length || 0),
+      without_naboopay_id: paymentsWithoutId?.length || 0,
+      with_naboopay_id: paymentsWithId?.length || 0,
+      completed: paymentsWithId?.filter(p => p.status === 'completed').length || 0,
+      pending: paymentsWithId?.filter(p => p.status === 'pending').length || 0
+    };
+
+    res.json({
+      success: true,
+      message: 'Sync analysis complete',
+      stats: stats,
+      payments_without_id: paymentsWithoutId?.map(p => ({
+        id: p.id,
+        amount: p.amount,
+        status: p.status,
+        created_at: p.created_at,
+        user_id: p.user_id
+      })),
+      payments_with_id: paymentsWithId?.map(p => ({
+        id: p.id,
+        naboopay_id: p.naboopay_payment_id,
+        amount: p.amount,
+        status: p.status,
+        created_at: p.created_at
+      }))
+    });
     
   } catch (error) {
-    console.error('Webhook error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/admin/link-naboopay', requireAdmin, async (req, res) => {
+  try {
+    const { payment_id, naboopay_id } = req.body;
+    
+    console.log(`🔗 [ADMIN] Linking payment ${payment_id} to NabooPay ${naboopay_id}`);
+    
+    const { error } = await supabase
+      .from('payment_transactions')
+      .update({
+        naboopay_payment_id: naboopay_id,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', payment_id);
+    
+    if (error) throw error;
+    
+    res.json({
+      success: true,
+      message: `Payment ${payment_id} linked to NabooPay ${naboopay_id}`
+    });
+    
+  } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
