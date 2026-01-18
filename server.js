@@ -4759,82 +4759,62 @@ app.post('/api/payment/confirm/:transaction_id', requireAuth, async (req, res) =
 });
 
 app.get('/api/admin/payments-detailed', requireAdmin, async (req, res) => {
-  console.log('💰 [ADMIN] Fetching detailed payments...');
-  
   try {
+    console.log('💰 [ADMIN] Fetching detailed payments...');
+
     const { data, error } = await supabase
       .from('payment_transactions')
       .select(`
         *,
-        user:users (
-          id,
-          email,
-          full_name,
-          phone,
-          shop_name,
-          subscription_type,
-          is_premium,
-          created_at
-        )
+        users!inner(*)
       `)
       .order('created_at', { ascending: false });
 
     if (error) {
-      console.error('❌ [ADMIN] Error fetching payments:', error);
+      console.error('❌ [ADMIN] Supabase error:', error);
       return res.status(500).json({ error: error.message });
     }
 
     console.log(`✅ [ADMIN] Found ${data?.length || 0} payments`);
-   
+
     const formattedData = (data || []).map(payment => {
-      const user = payment.user || {};
-      const SUBSCRIPTION_PRICE = 15000; 
-    
+      const user = payment.users || {};
+      const SUBSCRIPTION_PRICE = 15000;
+      
       const isSuspicious = payment.amount !== SUBSCRIPTION_PRICE;
       const amountDifference = Math.abs(payment.amount - SUBSCRIPTION_PRICE);
       
       return {
         id: payment.id,
-        transaction_id: payment.naboopay_payment_id || payment.naboopay_transaction_id || 'N/A',
-        internal_id: payment.id,
-     
+        transaction_id: payment.naboopay_payment_id || payment.id,
+      
         amount: payment.amount || 0,
-        original_amount: payment.amount || 0,
         formatted_amount: `${(payment.amount || 0).toLocaleString()} FCFA`,
         status: payment.status || 'pending',
         created_at: payment.created_at,
-        updated_at: payment.updated_at,
-      
         subscription_type: payment.subscription_type || 'premium',
         subscription_months: payment.subscription_months || 1,
-        payment_method: payment.payment_method || 'naboopay',
-      
+   
         naboopay_id: payment.naboopay_payment_id,
-        naboopay_status: payment.naboopay_status,
-        checkout_url: payment.naboopay_checkout_url,
-    
+        naboopay_url: payment.naboopay_checkout_url,
+     
         user_id: user.id,
         user_email: user.email,
-        user_name: user.full_name,
-        user_phone: user.phone,
-        user_shop_name: user.shop_name,
+        user_name: user.full_name || user.email?.split('@')[0] || 'Utilisateur',
+        user_phone: user.phone || '—',
+        user_shop_name: user.shop_name || '—',
         user_is_premium: user.is_premium,
-        user_subscription_type: user.subscription_type,
         user_created_at: user.created_at,
         user_member_since: user.created_at ? 
           `Depuis ${new Date(user.created_at).toLocaleDateString('fr-FR')}` : 'Nouveau',
-      
+   
         is_suspicious: isSuspicious,
         suspicious_reason: isSuspicious ? 
-          `Montant anormal: ${payment.amount} FCFA au lieu de ${SUBSCRIPTION_PRICE} FCFA (diff: ${amountDifference} FCFA)` : 
-          null,
-        needs_verification: isSuspicious && payment.status === 'completed',
-        is_test_payment: payment.amount < 1000, 
-        
-        display_name: user.full_name || user.email?.split('@')[0] || 'Utilisateur',
+          `Montant: ${payment.amount} FCFA ≠ ${SUBSCRIPTION_PRICE} FCFA` : null,
+      
+        display_name: user.full_name || user.email?.split('@')[0] || '—',
         display_email: user.email || '—',
-        display_phone: user.phone ? 
-          user.phone.replace(/(\d{2})(?=\d)/g, '$1 ') : '—',
+        display_phone: user.phone ? user.phone.replace(/(\d{2})(?=\d)/g, '$1 ') : '—',
         display_date: payment.created_at ? 
           new Date(payment.created_at).toLocaleDateString('fr-FR') : 'N/A',
         display_time: payment.created_at ? 
@@ -4849,7 +4829,7 @@ app.get('/api/admin/payments-detailed', requireAdmin, async (req, res) => {
 
   } catch (error) {
     console.error('💥 [ADMIN] Server error:', error);
-    res.status(500).json({ error: 'Erreur serveur: ' + error.message });
+    res.status(500).json({ error: error.message });
   }
 });
 
