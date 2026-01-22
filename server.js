@@ -1136,9 +1136,9 @@ app.post('/api/products', requireAuth, async (req, res) => {
       });
     }
     
-    const { name, price, category, purchase_price, stock } = req.body;
+    const { name, price, category, purchase_price, stock, imageBase64, fileName, mimeType } = req.body;
     
-    const { data: product } = await supabase
+    const { data: product, error: productError } = await supabase
       .from('products')
       .insert([{
         user_id: userId,
@@ -1153,9 +1153,64 @@ app.post('/api/products', requireAuth, async (req, res) => {
       }])
       .select();
     
+    if (productError) throw productError;
+    
+    const productId = product[0].id;
+    
+    if (imageBase64 && imageBase64.includes('base64,')) {
+      const base64Data = imageBase64.split(',')[1];
+      const buffer = Buffer.from(base64Data, 'base64');
+      
+      const supabaseAdmin = createClient(supabaseUrl, process.env.SUPABASE_SERVICE_ROLE_KEY || supabaseAnonKey);
+      const fileExtension = mimeType === 'image/png' ? 'png' : 'jpg';
+      const uniqueFileName = `products/${userId}/${productId}-${Date.now()}.${fileExtension}`;
+      
+      console.log('🔄 [CREATE] Upload image:', {
+        productId,
+        fileName: uniqueFileName,
+        bufferSize: buffer.length,
+        mimeType
+      });
+      
+      const { error: uploadError } = await supabaseAdmin.storage
+        .from('product-images')
+        .upload(uniqueFileName, buffer, {
+          contentType: mimeType || 'image/jpeg',
+          upsert: true,
+          cacheControl: '3600'
+        });
+      
+      if (uploadError) {
+        console.error('❌ [CREATE] Erreur upload:', uploadError);
+      } else {
+        const { data: { publicUrl } } = supabaseAdmin.storage
+          .from('product-images')
+          .getPublicUrl(uniqueFileName);
+        
+        console.log('✅ [CREATE] URL générée:', publicUrl);
+        
+        const { error: updateError } = await supabase
+          .from('products')
+          .update({ 
+            image_url: publicUrl,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', productId)
+          .eq('user_id', userId);
+        
+        if (updateError) {
+          console.error('❌ [CREATE] Erreur update image_url:', updateError);
+        } else {
+          console.log('✅ [CREATE] image_url mis à jour');
+          product[0].image_url = publicUrl;
+        }
+      }
+    }
+    
     res.json({ success: true, product: product[0] });
     
   } catch (error) {
+    console.error('💥 [CREATE] Erreur complète:', error);
     res.status(500).json({ error: error.message });
   }
 });
