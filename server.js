@@ -1412,7 +1412,7 @@ if (fetchError) {
           error: 'Produit supprimé ou introuvable après upload',
           product_id: productId,
           debug: {
-            original_owner: existingProduct.user_id,
+          original_owner: existingProduct?.user_id,
             current_check: doubleCheck,
             upload_success: true,
             image_url: publicUrl
