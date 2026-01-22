@@ -1296,7 +1296,7 @@ if (fetchError) {
   }
   
   existingProduct = product;
-  console.log('✅ [UPLOAD] Produit trouvé:', existingProduct.name);
+ console.log('✅ [UPLOAD] Produit trouvé:', existingProduct?.name || 'Sans nom');
 } else {
   console.error('❌ [UPLOAD] Produit non trouvé en BDD:', productId);
   return res.status(404).json({ 
@@ -1306,7 +1306,7 @@ if (fetchError) {
   });
 }
 
-    console.log('✅ [UPLOAD] Produit trouvé:', existingProduct.name);
+    console.log('✅ [UPLOAD] Produit trouvé:', existingProduct?.name || 'Sans nom');
 
     let base64Data = imageBase64;
     
