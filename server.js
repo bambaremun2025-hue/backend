@@ -1223,6 +1223,7 @@ app.post('/api/products/with-image', requireAuth, async (req, res) => {
         res.status(500).json({ error: error.message });
     }
 });
+
 app.post('/api/products/upload', requireAuth, async (req, res) => {
   try {
     console.log('📸 [UPLOAD] Début upload image');
@@ -1246,6 +1247,46 @@ app.post('/api/products/upload', requireAuth, async (req, res) => {
     if (!productId) {
       return res.status(400).json({ error: 'ID produit manquant' });
     }
+
+    console.log('🔍 [UPLOAD] Vérification produit:', productId);
+    
+    const { data: existingProduct, error: findError } = await supabase
+      .from('products')
+      .select('id, user_id, name')
+      .eq('id', productId)
+      .eq('user_id', userId)
+      .single();
+
+    if (findError || !existingProduct) {
+      console.error('❌ [UPLOAD] Produit non trouvé ou non autorisé:', {
+        productId,
+        userId,
+        error: findError?.message
+      });
+ 
+      const { data: otherUserProduct } = await supabase
+        .from('products')
+        .select('user_id')
+        .eq('id', productId)
+        .single();
+        
+      if (otherUserProduct) {
+        return res.status(403).json({ 
+          error: 'Produit appartient à un autre utilisateur',
+          product_id: productId,
+          actual_owner: otherUserProduct.user_id,
+          current_user: userId
+        });
+      } else {
+        return res.status(404).json({ 
+          error: 'Produit non trouvé en base de données',
+          product_id: productId,
+          suggestion: 'Vérifiez que le produit a été créé avant d\'uploader une image'
+        });
+      }
+    }
+
+    console.log('✅ [UPLOAD] Produit trouvé:', existingProduct.name);
 
     let base64Data = imageBase64;
     
@@ -1272,7 +1313,7 @@ app.post('/api/products/upload', requireAuth, async (req, res) => {
     const supabaseAdmin = createClient(supabaseUrl, process.env.SUPABASE_SERVICE_ROLE_KEY || supabaseAnonKey);
     
     const fileExtension = mimeType === 'image/png' ? 'png' : 'jpg';
-    const uniqueFileName = `products/${userId}/${productId}.${fileExtension}`;
+    const uniqueFileName = `products/${userId}/${productId}-${Date.now()}.${fileExtension}`;
 
     console.log('📁 [UPLOAD] Nom fichier:', uniqueFileName);
 
@@ -1307,47 +1348,105 @@ app.post('/api/products/upload', requireAuth, async (req, res) => {
       })
       .eq('id', productId)
       .eq('user_id', userId)
-      .select();
+      .select('id, name, image_url, updated_at');
 
     console.log('🔄 [UPLOAD] Update résultat:', {
       success: !updateError,
       error: updateError?.message,
       rowsUpdated: updatedProduct?.length,
-      image_url: updatedProduct?.[0]?.image_url
+      updatedProduct: updatedProduct?.[0]
     });
     
     if (updateError) {
       console.error('❌ [UPLOAD] Erreur update BDD:', updateError);
-      return res.status(500).json({ error: 'Erreur mise à jour produit: ' + updateError.message });
+      return res.status(500).json({ 
+        error: 'Erreur mise à jour produit: ' + updateError.message,
+        details: {
+          productId,
+          userId,
+          imageUrlLength: publicUrl?.length
+        }
+      });
     }
   
     if (!updatedProduct || updatedProduct.length === 0) {
-      console.error('❌ [UPLOAD] Aucun produit mis à jour');
-      return res.status(404).json({ error: 'Produit non trouvé après update' });
+      console.error('❌ [UPLOAD] Aucun produit mis à jour - investigation:', {
+        productId,
+        userId,
+        publicUrl
+      });
+   
+      const { data: doubleCheck, error: doubleError } = await supabase
+        .from('products')
+        .select('id, user_id, name, deleted_at')
+        .eq('id', productId)
+        .single();
+        
+      console.log('🔍 [UPLOAD] Double vérification:', {
+        doubleCheck,
+        doubleError: doubleError?.message
+      });
+      
+      if (doubleError || !doubleCheck) {
+        return res.status(404).json({ 
+          error: 'Produit supprimé ou introuvable après upload',
+          product_id: productId,
+          debug: {
+            original_owner: existingProduct.user_id,
+            current_check: doubleCheck,
+            upload_success: true,
+            image_url: publicUrl
+          }
+        });
+      }
+      
+      if (doubleCheck.user_id !== userId) {
+        return res.status(403).json({ 
+          error: 'Permissions modifiées pendant l\'upload',
+          product_id: productId,
+          original_user: userId,
+          current_owner: doubleCheck.user_id
+        });
+      }
+    
+      return res.status(200).json({
+        success: true,
+        message: 'Image uploadée mais vérification de mise à jour limitée',
+        imageUrl: publicUrl,
+        productId: productId,
+        warning: 'Veuillez rafraîchir la page pour voir l\'image'
+      });
     }
     
     const finalImageUrl = updatedProduct[0].image_url;
     console.log('🎯 [UPLOAD] Final image_url sauvegardé:', finalImageUrl);
-    
+
     try {
       const imgCheck = await fetch(publicUrl, { method: 'HEAD' });
       console.log('🌐 [UPLOAD] Image accessible:', imgCheck.ok, imgCheck.status);
     } catch (imgError) {
-      console.warn('⚠️ [UPLOAD] Image non accessible:', imgError.message);
+      console.warn('⚠️ [UPLOAD] Image non accessible immédiatement:', imgError.message);
     }
     
     res.json({
       success: true,
       imageUrl: finalImageUrl,
       product: updatedProduct[0],
-      message: 'Image sauvegardée avec succès'
+      message: 'Image sauvegardée avec succès',
+      debug: {
+        productId,
+        userId,
+        fileSize: buffer.length,
+        storagePath: uniqueFileName
+      }
     });
     
   } catch (error) {
     console.error('💥 [UPLOAD] Erreur complète:', error);
     res.status(500).json({ 
       error: 'Erreur serveur: ' + error.message,
-      stack: error.stack?.split('\n')[0]
+      stack: error.stack?.split('\n')[0],
+      timestamp: new Date().toISOString()
     });
   }
 });
