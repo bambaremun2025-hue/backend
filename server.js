@@ -1246,7 +1246,7 @@ let findError = null;
 
 const { data: products, error: fetchError } = await supabase
   .from('products')
-  .select('id, user_id, name, created_at, deleted_at')
+  .select('id, user_id, name, created_at')
   .eq('id', productId);
 
 console.log('📊 [UPLOAD] Résultat recherche produit:', {
