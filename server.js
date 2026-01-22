@@ -1248,43 +1248,63 @@ app.post('/api/products/upload', requireAuth, async (req, res) => {
       return res.status(400).json({ error: 'ID produit manquant' });
     }
 
-    console.log('🔍 [UPLOAD] Vérification produit:', productId);
-    
-    const { data: existingProduct, error: findError } = await supabase
-      .from('products')
-      .select('id, user_id, name')
-      .eq('id', productId)
-      .eq('user_id', userId)
-      .single();
+   console.log('🔍 [UPLOAD] Vérification produit:', productId);
 
-    if (findError || !existingProduct) {
-      console.error('❌ [UPLOAD] Produit non trouvé ou non autorisé:', {
-        productId,
-        userId,
-        error: findError?.message
-      });
- 
-      const { data: otherUserProduct } = await supabase
-        .from('products')
-        .select('user_id')
-        .eq('id', productId)
-        .single();
-        
-      if (otherUserProduct) {
-        return res.status(403).json({ 
-          error: 'Produit appartient à un autre utilisateur',
-          product_id: productId,
-          actual_owner: otherUserProduct.user_id,
-          current_user: userId
-        });
-      } else {
-        return res.status(404).json({ 
-          error: 'Produit non trouvé en base de données',
-          product_id: productId,
-          suggestion: 'Vérifiez que le produit a été créé avant d\'uploader une image'
-        });
-      }
-    }
+let existingProduct = null;
+let findError = null;
+
+const { data: products, error: fetchError } = await supabase
+  .from('products')
+  .select('id, user_id, name, created_at, deleted_at')
+  .eq('id', productId);
+
+console.log('📊 [UPLOAD] Résultat recherche produit:', {
+  productId,
+  userId,
+  foundProducts: products?.length || 0,
+  products: products,
+  error: fetchError?.message
+});
+
+if (fetchError) {
+  console.error('❌ [UPLOAD] Erreur requête Supabase:', fetchError);
+  findError = fetchError;
+} else if (products && products.length > 0) {
+  const product = products[0];
+
+  if (product.user_id !== userId) {
+    console.error('❌ [UPLOAD] Produit appartient à un autre utilisateur:', {
+      productId,
+      productUserId: product.user_id,
+      currentUserId: userId
+    });
+    return res.status(403).json({ 
+      error: 'Produit appartient à un autre utilisateur',
+      product_id: productId,
+      actual_owner: product.user_id,
+      current_user: userId
+    });
+  }
+
+  if (product.deleted_at) {
+    console.error('❌ [UPLOAD] Produit supprimé:', product);
+    return res.status(404).json({ 
+      error: 'Produit a été supprimé',
+      product_id: productId,
+      deleted_at: product.deleted_at
+    });
+  }
+  
+  existingProduct = product;
+  console.log('✅ [UPLOAD] Produit trouvé:', existingProduct.name);
+} else {
+  console.error('❌ [UPLOAD] Produit non trouvé en BDD:', productId);
+  return res.status(404).json({ 
+    error: 'Produit non trouvé en base de données',
+    product_id: productId,
+    suggestion: 'Vérifiez que le produit a été créé avant d\'uploader une image'
+  });
+}
 
     console.log('✅ [UPLOAD] Produit trouvé:', existingProduct.name);
 
