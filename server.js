@@ -1215,63 +1215,88 @@ app.post('/api/products', requireAuth, async (req, res) => {
   }
 });
 
-app.post('/api/products/upload', async (req, res) => {
+app.post('/api/products/upload', requireAuth, async (req, res) => {
   try {
-    const USER_ID = '7055f4e8-8dc2-400a-9eaf-99a0b8a1698c';
+    // 🎯 USER ID DYNAMIQUE (de l'utilisateur connecté)
+    const userId = req.user.userId;
+    
     const { imageBase64, productData } = req.body;
     
-    if (!imageBase64) return res.json({ success: false, error: 'no image' });
+    if (!imageBase64) {
+      return res.json({ success: false, error: 'Pas d\'image' });
+    }
     
-    // Upload storage
     const supabaseAdmin = createClient(supabaseUrl, process.env.SUPABASE_SERVICE_ROLE_KEY || supabaseAnonKey);
     
+    // Extraire base64
     const base64Data = imageBase64.includes('base64,') 
       ? imageBase64.split(',')[1] 
       : imageBase64;
     
     const buffer = Buffer.from(base64Data, 'base64');
-    const productId = 'prod-' + Date.now();
-    const fileName = `products/${USER_ID}/${productId}.jpg`;
+    const uniqueId = Date.now();
+    const fileName = `products/${userId}/product-${uniqueId}.jpg`;
     
+    console.log('📁 Upload pour user:', userId, 'fichier:', fileName);
+    
+    // 1. Upload vers Storage
     const { error: uploadError } = await supabaseAdmin.storage
       .from('product-images')
-      .upload(fileName, buffer, { contentType: 'image/jpeg', upsert: true });
+      .upload(fileName, buffer, {
+        contentType: 'image/jpeg',
+        upsert: true
+      });
     
-    if (uploadError) throw uploadError;
+    if (uploadError) {
+      console.error('❌ Erreur storage:', uploadError);
+      throw uploadError;
+    }
     
+    // 2. Obtenir URL publique
     const { data: { publicUrl } } = supabaseAdmin.storage
       .from('product-images')
       .getPublicUrl(fileName);
     
-    // Insert into products table
+    console.log('🔗 URL générée:', publicUrl);
+    
+    // 3. 🚨 CRÉER LE PRODUIT AVEC L'URL
     const { data: newProduct, error: dbError } = await supabaseAdmin
       .from('products')
       .insert([{
-        user_id: USER_ID,
-        name: productData?.name || 'Product',
+        user_id: userId,
+        name: productData?.name || 'Nouveau produit',
         price: productData?.price || 0,
         category: productData?.category || '',
         stock: productData?.stock || 0,
         purchase_price: productData?.purchase_price || null,
-        image_url: publicUrl,
+        image_url: publicUrl, // 🚨 URL BIEN SAUVÉE ICI
         status: 'active',
-        created_at: new Date().toISOString()
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
       }])
-      .select('id, name, image_url, price, created_at');
+      .select('id, name, image_url, price, stock, category, created_at');
     
-    if (dbError) throw dbError;
+    if (dbError) {
+      console.error('❌ Erreur DB:', dbError);
+      throw dbError;
+    }
     
+    console.log('✅ Produit créé:', newProduct[0].id);
+    
+    // 4. RÉPONSE SUCCÈS
     res.json({
       success: true,
       imageUrl: publicUrl,
       productId: newProduct[0].id,
-      product: newProduct[0]
+      product: newProduct[0],
+      message: 'Produit créé avec image'
     });
     
   } catch (error) {
-    res.status(500).json({ 
+    console.error('💥 Erreur upload:', error);
+    res.status(500).json({
       success: false,
-      error: error.message 
+      error: error.message
     });
   }
 });
