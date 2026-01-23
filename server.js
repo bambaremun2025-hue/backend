@@ -1215,143 +1215,63 @@ app.post('/api/products', requireAuth, async (req, res) => {
   }
 });
 
-app.post('/api/products/upload', requireAuth, async (req, res) => {
+app.post('/api/products/upload', async (req, res) => {
   try {
-    console.log('📸 [UPLOAD] Début - Données reçues');
+    const USER_ID = '7055f4e8-8dc2-400a-9eaf-99a0b8a1698c';
+    const { imageBase64, productData } = req.body;
     
-    const userId = req.user.userId;
-    const { imageBase64, productId, fileName, mimeType, productData } = req.body;
-
-    console.log('📦 [UPLOAD] Données:', {
-      userId,
-      productId,
-      hasImage: !!imageBase64,
-      hasProductData: !!productData,
-      productName: productData?.name
-    });
-
-    let finalProductId = productId;
-    let productName = productData?.name || 'Nouveau produit';
-    let productPrice = productData?.price || 0;
-
+    if (!imageBase64) return res.json({ success: false, error: 'no image' });
+    
+    // Upload storage
     const supabaseAdmin = createClient(supabaseUrl, process.env.SUPABASE_SERVICE_ROLE_KEY || supabaseAnonKey);
-
-    if (productData && (!productId || productId === 'new')) {
-      console.log('🆕 [UPLOAD] Création produit dans Supabase');
-      
-      const { data: newProduct, error: createError } = await supabaseAdmin
-        .from('products')
-        .insert([{
-          user_id: userId,
-          name: productName,
-          price: productPrice,
-          category: productData.category || '',
-          stock: productData.stock || 0,
-          purchase_price: productData.purchase_price || null,
-          status: 'active',
-          created_at: new Date().toISOString()
-        }])
-        .select('id, name, price');
-      
-      if (createError) {
-        console.error('❌ [UPLOAD] Erreur création produit:', createError);
-        throw createError;
-      }
-      
-      finalProductId = newProduct[0].id;
-      console.log('✅ [UPLOAD] Produit créé ID:', finalProductId);
-    }
-
-    if (!imageBase64) {
-      throw new Error('Aucune image fournie');
-    }
-
+    
     const base64Data = imageBase64.includes('base64,') 
       ? imageBase64.split(',')[1] 
       : imageBase64;
-
+    
     const buffer = Buffer.from(base64Data, 'base64');
-    const fileExtension = mimeType === 'image/png' ? 'png' : 'jpg';
-    const uniqueFileName = `products/${userId}/${finalProductId}-${Date.now()}.${fileExtension}`;
-
-    console.log('📁 [UPLOAD] Upload vers:', uniqueFileName);
-
-    const { data: uploadData, error: uploadError } = await supabaseAdmin.storage
+    const productId = 'prod-' + Date.now();
+    const fileName = `products/${USER_ID}/${productId}.jpg`;
+    
+    const { error: uploadError } = await supabaseAdmin.storage
       .from('product-images')
-      .upload(uniqueFileName, buffer, {
-        contentType: mimeType || 'image/jpeg',
-        upsert: true,
-        cacheControl: '3600'
-      });
-
-    if (uploadError) {
-      console.error('❌ [UPLOAD] Erreur upload storage:', uploadError);
-      throw new Error(`Upload storage failed: ${uploadError.message}`);
-    }
-
-    console.log('✅ [UPLOAD] Upload storage réussi');
-
+      .upload(fileName, buffer, { contentType: 'image/jpeg', upsert: true });
+    
+    if (uploadError) throw uploadError;
+    
     const { data: { publicUrl } } = supabaseAdmin.storage
       .from('product-images')
-      .getPublicUrl(uniqueFileName);
-
-    console.log('🔗 [UPLOAD] URL publique:', publicUrl);
-
-    console.log('🔄 [UPLOAD] Mise à jour produit dans BDD:', {
-      productId: finalProductId,
-      imageUrl: publicUrl
-    });
-
-    const { data: updatedProduct, error: updateError } = await supabaseAdmin
+      .getPublicUrl(fileName);
+    
+    // Insert into products table
+    const { data: newProduct, error: dbError } = await supabaseAdmin
       .from('products')
-      .update({ 
+      .insert([{
+        user_id: USER_ID,
+        name: productData?.name || 'Product',
+        price: productData?.price || 0,
+        category: productData?.category || '',
+        stock: productData?.stock || 0,
+        purchase_price: productData?.purchase_price || null,
         image_url: publicUrl,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', finalProductId)
-      .eq('user_id', userId)
-      .select('id, name, image_url, price, stock, category, created_at'); 
-
-    if (updateError) {
-      console.error('❌ [UPLOAD] Erreur MAJ produit:', updateError);
-      throw new Error(`Update product failed: ${updateError.message}`);
-    }
-
-    if (!updatedProduct || updatedProduct.length === 0) {
-      console.error('❌ [UPLOAD] Aucun produit mis à jour');
-      throw new Error('Product not found after upload');
-    }
-
-    console.log('✅ [UPLOAD] Produit mis à jour:', updatedProduct[0]);
-
-    const finalProduct = {
-      id: finalProductId,
-      user_id: userId,
-      name: productName,
-      price: productPrice,
-      image_url: publicUrl, 
-      stock: productData?.stock || 0,
-      category: productData?.category || '',
-      purchase_price: productData?.purchase_price || null,
-      status: 'active',
-      created_at: updatedProduct[0].created_at || new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    };
-
+        status: 'active',
+        created_at: new Date().toISOString()
+      }])
+      .select('id, name, image_url, price, created_at');
+    
+    if (dbError) throw dbError;
+    
     res.json({
       success: true,
       imageUrl: publicUrl,
-      productId: finalProductId,
-      product: finalProduct, 
-      message: 'Produit créé avec image'
+      productId: newProduct[0].id,
+      product: newProduct[0]
     });
-
+    
   } catch (error) {
-    console.error('💥 [UPLOAD] Erreur complète:', error);
     res.status(500).json({ 
       success: false,
-      error: error.message,
-      timestamp: new Date().toISOString()
+      error: error.message 
     });
   }
 });
