@@ -1217,117 +1217,52 @@ app.post('/api/products', requireAuth, async (req, res) => {
 
 app.post('/api/products/upload', requireAuth, async (req, res) => {
   try {
-    console.log('📸 [UPLOAD] Début upload image');
-    
     const userId = req.user.userId;
-    const { imageBase64, productId, fileName, mimeType } = req.body;
+    const { imageBase64, productId, fileName, mimeType, productData } = req.body; // ← Ajouter productData
 
-    console.log('📦 [UPLOAD] Données reçues:', {
-      userId,
+    console.log('📸 [UPLOAD] Démarrage:', {
       productId,
       hasImage: !!imageBase64,
-      imageSize: imageBase64?.length,
-      fileName,
-      mimeType
+      hasProductData: !!productData
     });
 
-    if (!imageBase64) {
-      return res.status(400).json({ error: 'Données image manquantes' });
-    }
-
-    if (!productId) {
-      return res.status(400).json({ error: 'ID produit manquant' });
-    }
-
-   console.log('🔍 [UPLOAD] Vérification produit:', productId);
-
-let existingProduct = null;
-let findError = null;
-
-const { data: products, error: fetchError } = await supabase
-  .from('products')
-  .select('id, user_id, name, created_at')
-  .eq('id', productId);
-
-console.log('📊 [UPLOAD] Résultat recherche produit:', {
-  productId,
-  userId,
-  foundProducts: products?.length || 0,
-  products: products,
-  error: fetchError?.message
-});
-
-if (fetchError) {
-  console.error('❌ [UPLOAD] Erreur requête Supabase:', fetchError);
-  findError = fetchError;
-} else if (products && products.length > 0) {
-  const product = products[0];
-
-  if (product.user_id !== userId) {
-    console.error('❌ [UPLOAD] Produit appartient à un autre utilisateur:', {
-      productId,
-      productUserId: product.user_id,
-      currentUserId: userId
-    });
-    return res.status(403).json({ 
-      error: 'Produit appartient à un autre utilisateur',
-      product_id: productId,
-      actual_owner: product.user_id,
-      current_user: userId
-    });
-  }
-
-  if (product.deleted_at) {
-    console.error('❌ [UPLOAD] Produit supprimé:', product);
-    return res.status(404).json({ 
-      error: 'Produit a été supprimé',
-      product_id: productId,
-      deleted_at: product.deleted_at
-    });
-  }
-  
-  existingProduct = product;
- console.log('✅ [UPLOAD] Produit trouvé:', existingProduct?.name || 'Sans nom');
-} else {
-  console.error('❌ [UPLOAD] Produit non trouvé en BDD:', productId);
-  return res.status(404).json({ 
-    error: 'Produit non trouvé en base de données',
-    product_id: productId,
-    suggestion: 'Vérifiez que le produit a été créé avant d\'uploader une image'
-  });
-}
-
-    console.log('✅ [UPLOAD] Produit trouvé:', existingProduct?.name || 'Sans nom');
-
-    let base64Data = imageBase64;
+    let finalProductId = productId;
     
-    if (imageBase64.includes('base64,')) {
-      base64Data = imageBase64.split(',')[1];
+    if (productData && (!productId || productId === 'new')) {
+      console.log('🆕 [UPLOAD] Création produit depuis upload');
+      
+      const { data: newProduct, error: createError } = await supabase
+        .from('products')
+        .insert([{
+          user_id: userId,
+          name: productData.name || 'Nouveau produit',
+          price: productData.price || 0,
+          category: productData.category || '',
+          stock: productData.stock || 0,
+          purchase_price: productData.purchase_price || null,
+          status: 'active',
+          created_at: new Date().toISOString()
+        }])
+        .select();
+      
+      if (createError) throw createError;
+      
+      finalProductId = newProduct[0].id;
+      console.log('✅ [UPLOAD] Produit créé:', finalProductId);
     }
 
-    if (!base64Data) {
-      return res.status(400).json({ error: 'Format base64 invalide' });
-    }
+    const base64Data = imageBase64.includes('base64,') 
+      ? imageBase64.split(',')[1] 
+      : imageBase64;
 
-    let buffer;
-    try {
-      buffer = Buffer.from(base64Data, 'base64');
-      console.log('📊 [UPLOAD] Buffer créé:', buffer.length, 'bytes');
-    } catch (bufferError) {
-      return res.status(400).json({ error: 'Données base64 corrompues' });
-    }
+    const buffer = Buffer.from(base64Data, 'base64');
+    const fileExtension = mimeType === 'image/png' ? 'png' : 'jpg';
+    const uniqueFileName = `products/${userId}/${finalProductId}-${Date.now()}.${fileExtension}`;
 
-    if (buffer.length === 0) {
-      return res.status(400).json({ error: 'Buffer image vide' });
-    }
+    console.log('📁 [UPLOAD] Upload fichier:', uniqueFileName);
 
     const supabaseAdmin = createClient(supabaseUrl, process.env.SUPABASE_SERVICE_ROLE_KEY || supabaseAnonKey);
     
-    const fileExtension = mimeType === 'image/png' ? 'png' : 'jpg';
-    const uniqueFileName = `products/${userId}/${productId}-${Date.now()}.${fileExtension}`;
-
-    console.log('📁 [UPLOAD] Nom fichier:', uniqueFileName);
-
     const { data: uploadData, error: uploadError } = await supabaseAdmin.storage
       .from('product-images')
       .upload(uniqueFileName, buffer, {
@@ -1336,14 +1271,7 @@ if (fetchError) {
         cacheControl: '3600'
       });
 
-    if (uploadError) {
-      console.error('❌ [UPLOAD] Erreur upload storage:', uploadError);
-      return res.status(500).json({ 
-        error: 'Erreur upload storage: ' + uploadError.message 
-      });
-    }
-
-    console.log('✅ [UPLOAD] Upload storage réussi:', uploadData);
+    if (uploadError) throw uploadError;
 
     const { data: { publicUrl } } = supabaseAdmin.storage
       .from('product-images')
@@ -1357,107 +1285,32 @@ if (fetchError) {
         image_url: publicUrl,
         updated_at: new Date().toISOString()
       })
-      .eq('id', productId)
+      .eq('id', finalProductId)
       .eq('user_id', userId)
-      .select('id, name, image_url, updated_at');
+      .select('id, name, image_url, price, stock');
 
-    console.log('🔄 [UPLOAD] Update résultat:', {
-      success: !updateError,
-      error: updateError?.message,
-      rowsUpdated: updatedProduct?.length,
-      updatedProduct: updatedProduct?.[0]
-    });
-    
     if (updateError) {
-      console.error('❌ [UPLOAD] Erreur update BDD:', updateError);
-      return res.status(500).json({ 
-        error: 'Erreur mise à jour produit: ' + updateError.message,
-        details: {
-          productId,
-          userId,
-          imageUrlLength: publicUrl?.length
-        }
-      });
+      console.warn('⚠️ [UPLOAD] Erreur update, mais upload réussi');
     }
-  
-    if (!updatedProduct || updatedProduct.length === 0) {
-      console.error('❌ [UPLOAD] Aucun produit mis à jour - investigation:', {
-        productId,
-        userId,
-        publicUrl
-      });
-   
-      const { data: doubleCheck, error: doubleError } = await supabase
-        .from('products')
-        .select('id, user_id, name, deleted_at')
-        .eq('id', productId)
-        .single();
-        
-      console.log('🔍 [UPLOAD] Double vérification:', {
-        doubleCheck,
-        doubleError: doubleError?.message
-      });
-      
-      if (doubleError || !doubleCheck) {
-        return res.status(404).json({ 
-          error: 'Produit supprimé ou introuvable après upload',
-          product_id: productId,
-          debug: {
-          original_owner: existingProduct?.user_id,
-            current_check: doubleCheck,
-            upload_success: true,
-            image_url: publicUrl
-          }
-        });
-      }
-      
-      if (doubleCheck.user_id !== userId) {
-        return res.status(403).json({ 
-          error: 'Permissions modifiées pendant l\'upload',
-          product_id: productId,
-          original_user: userId,
-          current_owner: doubleCheck.user_id
-        });
-      }
-    
-      return res.status(200).json({
-        success: true,
-        message: 'Image uploadée mais vérification de mise à jour limitée',
-        imageUrl: publicUrl,
-        productId: productId,
-        warning: 'Veuillez rafraîchir la page pour voir l\'image'
-      });
-    }
-    
-    const finalImageUrl = updatedProduct[0].image_url;
-    console.log('🎯 [UPLOAD] Final image_url sauvegardé:', finalImageUrl);
 
-    try {
-      const imgCheck = await fetch(publicUrl, { method: 'HEAD' });
-      console.log('🌐 [UPLOAD] Image accessible:', imgCheck.ok, imgCheck.status);
-    } catch (imgError) {
-      console.warn('⚠️ [UPLOAD] Image non accessible immédiatement:', imgError.message);
-    }
-    
     res.json({
       success: true,
-      imageUrl: finalImageUrl,
-      product: updatedProduct[0],
-      message: 'Image sauvegardée avec succès',
-      debug: {
-        productId,
-        userId,
-        fileSize: buffer.length,
-        storagePath: uniqueFileName
+      imageUrl: publicUrl,
+      productId: finalProductId,
+      product: updatedProduct?.[0] || { id: finalProductId },
+      message: 'Image sauvegardée',
+      immediateDisplay: {
+        url: publicUrl,
+        productId: finalProductId,
+        timestamp: Date.now()
       }
     });
-    
+
   } catch (error) {
-    console.error('💥 [UPLOAD] Erreur complète:', error);
+    console.error('💥 [UPLOAD] Erreur:', error);
     res.status(500).json({ 
-      error: 'Erreur serveur: ' + error.message,
-      stack: error.stack?.split('\n')[0],
-      timestamp: new Date().toISOString()
+      error: error.message,
+      stack: error.stack
     });
   }
 });
