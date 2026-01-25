@@ -883,21 +883,57 @@ app.get('/api/admin/products', requireAdmin, async (req, res) => {
 });
 
 app.get('/api/admin/sales', requireAdmin, async (req, res) => {
-    try {
-        const { data: sales, error } = await supabase
-            .from('sales')
-            .select(`
-                *,
-                products (name),
-                users (email)
-            `)
-            .order('created_at', { ascending: false });
+  try {
+    console.log('📊 [ADMIN] Récupération toutes les ventes');
+    
+    const { data: sales, error } = await supabase
+      .from('sales')
+      .select(`
+        *,
+        products (name, price, purchase_price),
+        users (email, full_name, shop_name)
+      `)
+      .order('created_at', { ascending: false });
 
-        if (error) throw error;
-        res.json(sales || []);
-    } catch (error) {
-        res.status(500).json({ error: error.message });
+    if (error) {
+      console.error('❌ Erreur Supabase:', error);
+      throw error;
     }
+
+    console.log(`✅ ${sales?.length || 0} ventes trouvées`);
+
+    const formattedSales = (sales || []).map(sale => {
+      const product = sale.products || {};
+      const user = sale.users || {};
+      
+      return {
+        id: sale.id,
+        sale_id: sale.id,
+        date: sale.sale_date || sale.created_at,
+        product_id: sale.product_id,
+        product_name: product.name || 'Produit supprimé',
+        product_price: product.price || 0,
+        quantity: sale.quantity,
+        unit_price: sale.total_amount / sale.quantity || 0,
+        amount: sale.total_amount,
+        profit: sale.profit || 0,
+        seller_id: sale.user_id,
+        seller_email: user.email || 'Email non disponible',
+        seller_name: user.full_name || user.shop_name || 'Vendeur',
+        sale_type: sale.sale_type || 'physical',
+        created_at: sale.created_at
+      };
+    });
+
+    res.json(formattedSales);
+
+  } catch (error) {
+    console.error('💥 Erreur admin sales:', error);
+    res.status(500).json({ 
+      error: error.message,
+      details: 'Erreur récupération ventes'
+    });
+  }
 });
 
 app.post('/api/admin/activate-subscription', requireAdmin, async (req, res) => {
