@@ -5146,6 +5146,107 @@ app.get('/api/debug/check-auth', async (req, res) => {
     }
 });
 
+app.get('/api/shop/shipping-settings', async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader) return res.status(401).json({ error: 'No token' });
+    
+    const token = authHeader.split(' ')[1];
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'default-secret');
+    const userId = decoded.userId;
+    
+    const { data: user, error } = await supabase
+      .from('users')
+      .select('shipping_type, shipping_price')
+      .eq('id', userId)
+      .single();
+    
+    if (error) throw error;
+    
+    res.json({
+      shipping_type: user.shipping_type || 'free',
+      shipping_price: user.shipping_price || 0
+    });
+    
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.put('/api/shop/shipping-settings', async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader) return res.status(401).json({ error: 'No token' });
+    
+    const token = authHeader.split(' ')[1];
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'default-secret');
+    const userId = decoded.userId;
+    
+    const { shipping_type, shipping_price } = req.body;
+    
+    if (shipping_type !== 'free' && shipping_type !== 'fixed') {
+      return res.status(400).json({ error: 'Invalid shipping type' });
+    }
+    
+    if (shipping_type === 'fixed' && (!shipping_price || shipping_price < 0)) {
+      return res.status(400).json({ error: 'Invalid shipping price' });
+    }
+    
+    const { data, error } = await supabase
+      .from('users')
+      .update({
+        shipping_type: shipping_type || 'free',
+        shipping_price: shipping_price || 0,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', userId)
+      .select('shipping_type, shipping_price');
+    
+    if (error) throw error;
+    
+    res.json({
+      success: true,
+      settings: data[0]
+    });
+    
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/orders/calculate-shipping', async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader) return res.status(401).json({ error: 'No token' });
+    
+    const token = authHeader.split(' ')[1];
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'default-secret');
+    const userId = decoded.userId;
+    const { cart_total } = req.body;
+    
+    const { data: user, error } = await supabase
+      .from('users')
+      .select('shipping_type, shipping_price')
+      .eq('id', userId)
+      .single();
+    
+    if (error) throw error;
+    
+    let shippingPrice = 0;
+    if (user.shipping_type === 'fixed') {
+      shippingPrice = user.shipping_price || 0;
+    }
+    
+    res.json({
+      shipping_price: shippingPrice,
+      total: (cart_total || 0) + shippingPrice
+    });
+    
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`Serveur demarre sur le port ${PORT}`);
 });
