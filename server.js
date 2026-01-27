@@ -2351,6 +2351,7 @@ app.get('/api/sales/combined-stats', async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
+
 app.get('/api/sales/combined-stats', async (req, res) => {
   try {
     const authHeader = req.headers.authorization;
@@ -2672,7 +2673,6 @@ app.post('/api/online-orders', async (req, res) => {
       });
     }
 
-    // CALCUL LIVRAISON
     let shippingPrice = 0;
     if (user.shipping_type === 'fixed') {
       shippingPrice = user.shipping_price || 0;
@@ -2707,13 +2707,7 @@ app.post('/api/online-orders', async (req, res) => {
 
     res.json({
       success: true,
-      order: order[0],
-      shipping_info: {
-        type: user.shipping_type || 'free',
-        price: shippingPrice,
-        subtotal: totalAmount,
-        total: totalWithShipping
-      }
+      order: order[0]
     });
 
   } catch (error) {
