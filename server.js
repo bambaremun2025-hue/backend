@@ -1082,15 +1082,16 @@ app.get('/api/admin/subscription-details', requireAdmin, async (req, res) => {
         res.status(500).json({ error: error.message });
     }
 });
+
 app.get('/api/public/shop/:user_id', async (req, res) => {
   try {
     const { user_id } = req.params;
     
-    console.log('🛍️ [PUBLIC SHOP] Chargement boutique pour:', user_id);
+    console.log('🛍️ [PUBLIC SHOP] Loading shop for:', user_id);
 
     const { data: user, error: userError } = await supabase
       .from('users')
-      .select('shop_name')
+      .select('shop_name, shipping_type, shipping_price')
       .eq('id', user_id)
       .single();
 
@@ -1116,6 +1117,10 @@ app.get('/api/public/shop/:user_id', async (req, res) => {
 
     res.json({
       shop_name: user?.shop_name || 'Ma Boutique',
+      shipping_info: {
+        type: user?.shipping_type || 'free',
+        price: user?.shipping_price || 0
+      },
       products: transformedProducts
     });
 
@@ -1124,6 +1129,7 @@ app.get('/api/public/shop/:user_id', async (req, res) => {
     res.status(500).json({ error: 'Erreur interne du serveur' });
   }
 });
+
 app.get('/api/products', requireAuth, async (req, res) => {
   const userId = req.user.userId;
   const { showAll } = req.query;
