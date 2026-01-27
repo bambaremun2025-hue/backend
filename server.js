@@ -2354,26 +2354,15 @@ app.get('/api/sales/combined-stats', async (req, res) => {
 app.get('/api/sales/combined-stats', async (req, res) => {
   try {
     const authHeader = req.headers.authorization;
-    if (!authHeader) return res.status(401).json({ error: 'Token manquant' });
+    
+    if (!authHeader) {
+      return res.status(401).json({ error: 'Token manquant' });
+    }
     
     const token = authHeader.split(' ')[1];
     const decoded = jwt.verify(token, process.env.JWT_SECRET || 'default-secret');
     const userId = decoded.userId;
-    
-    const { data: user } = await supabase
-      .from('users')
-      .select('subscription_type')
-      .eq('id', userId)
-      .single();
-    
-    if (user.subscription_type !== 'premium') {
-      return res.status(403).json({
-        success: false,
-        error: 'Analytics premium uniquement',
-        locked: true
-      });
-    }
-    
+
     const { data: physicalSales, error: physicalError } = await supabase
       .from('sales')
       .select('total_amount, profit, sale_date')
@@ -2382,7 +2371,7 @@ app.get('/api/sales/combined-stats', async (req, res) => {
 
     const { data: onlineOrders, error: ordersError } = await supabase
       .from('online_orders')
-      .select('total_amount, items, status, created_at')
+      .select('total_amount, shipping_price, items, status, created_at')
       .eq('user_id', userId)
       .in('status', ['confirmed', 'paid', 'delivered']);
 
@@ -2395,9 +2384,14 @@ app.get('/api/sales/combined-stats', async (req, res) => {
 
     let onlineRevenue = 0;
     let onlineProfit = 0;
+    let shippingRevenue = 0;
     
     (onlineOrders || []).forEach(order => {
-      onlineRevenue += parseFloat(order.total_amount || 0);
+      const orderRevenue = parseFloat(order.total_amount || 0);
+      const orderShipping = parseFloat(order.shipping_price || 0);
+      
+      onlineRevenue += orderRevenue;
+      shippingRevenue += orderShipping;
       
       (order.items || []).forEach(item => {
         const profit = (item.unit_price || 0) - (item.purchase_price || 0);
@@ -2427,6 +2421,8 @@ app.get('/api/sales/combined-stats', async (req, res) => {
       total_revenue: physicalRevenue + onlineRevenue,
       total_profit: physicalProfit + onlineProfit,
       total_orders: (physicalSales || []).length + (onlineOrders || []).length,
+      shipping_revenue: shippingRevenue,
+
       breakdown: {
         physical: {
           revenue: physicalRevenue,
@@ -2437,16 +2433,20 @@ app.get('/api/sales/combined-stats', async (req, res) => {
         online: {
           revenue: onlineRevenue,
           profit: onlineProfit,
+          shipping_revenue: shippingRevenue,
           count: (onlineOrders || []).length,
           avg_order_value: (onlineOrders || []).length > 0 ? onlineRevenue / (onlineOrders || []).length : 0
         }
       },
+
       comparison: {
         revenue_ratio: onlineRevenue > 0 ? (physicalRevenue / onlineRevenue).toFixed(2) : 'N/A',
         profit_margin_physical: physicalRevenue > 0 ? (physicalProfit / physicalRevenue * 100).toFixed(1) : 0,
         profit_margin_online: onlineRevenue > 0 ? (onlineProfit / onlineRevenue * 100).toFixed(1) : 0
       },
+
       period_stats: statsByPeriod,
+
       trend: {
         online_growth: calculateGrowth(onlineOrders || [], 'total_amount'),
         physical_growth: calculateGrowth(physicalSales || [], 'total_amount')
@@ -2454,6 +2454,7 @@ app.get('/api/sales/combined-stats', async (req, res) => {
     });
 
   } catch (error) {
+    console.error('Erreur analytics:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -2580,7 +2581,7 @@ app.post('/api/online-orders', async (req, res) => {
     
     const { data: user } = await supabase
       .from('users')
-      .select('subscription_type, trial_ends_at, subscription_end_date, is_premium')
+      .select('subscription_type, trial_ends_at, subscription_end_date, is_premium, shipping_type, shipping_price')
       .eq('id', user_id)
       .single();
     
@@ -2671,6 +2672,14 @@ app.post('/api/online-orders', async (req, res) => {
       });
     }
 
+    // CALCUL LIVRAISON
+    let shippingPrice = 0;
+    if (user.shipping_type === 'fixed') {
+      shippingPrice = user.shipping_price || 0;
+    }
+
+    const totalWithShipping = totalAmount + shippingPrice;
+
     const { data: order, error: orderError } = await supabase
       .from('online_orders')
       .insert([{
@@ -2685,7 +2694,9 @@ app.post('/api/online-orders', async (req, res) => {
         delivery_country: delivery_country || 'Sénégal',
         payment_method: payment_method || 'whatsapp',
         payment_status: 'pending',
-        total_amount: totalAmount,
+        total_amount: totalWithShipping,
+        shipping_price: shippingPrice,
+        shipping_type: user.shipping_type || 'free',
         items: orderItems,
         notes: notes || '',
         status: 'pending'
@@ -2696,14 +2707,19 @@ app.post('/api/online-orders', async (req, res) => {
 
     res.json({
       success: true,
-      order: order[0]
+      order: order[0],
+      shipping_info: {
+        type: user.shipping_type || 'free',
+        price: shippingPrice,
+        subtotal: totalAmount,
+        total: totalWithShipping
+      }
     });
 
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
-
 
 app.get('/api/online-orders/detailed', requireAuth, async (req, res) => {
   try {
