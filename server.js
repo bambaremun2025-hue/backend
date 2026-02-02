@@ -5247,6 +5247,67 @@ app.post('/api/orders/calculate-shipping', async (req, res) => {
   }
 });
 
+app.get('/api/admin/user-stats', requireAdmin, async (req, res) => {
+  try {
+    const { data: users, error } = await supabase
+      .from('users')
+      .select('id, email, full_name, shop_name, created_at');
+    
+    const stats = await Promise.all(
+      users.map(async (user) => {
+        const { count: physicalSales, data: physicalData } = await supabase
+          .from('sales')
+          .select('total_amount, profit', { count: 'exact' })
+          .eq('user_id', user.id)
+          .eq('sale_type', 'physical');
+        
+        const { count: onlineOrders, data: onlineData } = await supabase
+          .from('online_orders')
+          .select('total_amount, shipping_price, items', { count: 'exact' })
+          .eq('user_id', user.id)
+          .in('status', ['confirmed', 'paid', 'delivered']);
+        
+        const physicalRevenue = physicalData?.reduce((sum, s) => sum + (s.total_amount || 0), 0) || 0;
+        const physicalProfit = physicalData?.reduce((sum, s) => sum + (s.profit || 0), 0) || 0;
+        
+        let onlineRevenue = 0;
+        let onlineProfit = 0;
+        onlineData?.forEach(order => {
+          onlineRevenue += order.total_amount || 0;
+          order.items?.forEach(item => {
+            const profit = (item.unit_price || 0) - (item.purchase_price || 0);
+            onlineProfit += profit * (item.quantity || 0);
+          });
+        });
+        
+        return {
+          id: user.id,
+          email: user.email,
+          name: user.full_name || user.shop_name || user.email.split('@')[0],
+          shop_name: user.shop_name,
+          joined: user.created_at,
+          total_orders: (physicalSales || 0) + (onlineOrders || 0),
+          total_revenue: physicalRevenue + onlineRevenue,
+          total_profit: physicalProfit + onlineProfit,
+          physical_orders: physicalSales || 0,
+          online_orders: onlineOrders || 0,
+          physical_revenue: physicalRevenue,
+          online_revenue: onlineRevenue,
+          avg_order_value: ((physicalSales || 0) + (onlineOrders || 0)) > 0 
+            ? (physicalRevenue + onlineRevenue) / ((physicalSales || 0) + (onlineOrders || 0))
+            : 0
+        };
+      })
+    );
+    
+    stats.sort((a, b) => b.total_revenue - a.total_revenue);
+    
+    res.json(stats);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`Serveur demarre sur le port ${PORT}`);
 });
