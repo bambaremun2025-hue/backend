@@ -5635,6 +5635,174 @@ app.post('/api/emails/premium-welcome', async (req, res) => {
   }
 });
 
+// 3. Rappel d'essai gratuit (pendant l'essai)
+app.post('/api/emails/trial-reminder', async (req, res) => {
+  try {
+    const { email, name, daysLeft } = req.body;
+    
+    console.log('⏰ Envoi email rappel essai à:', email, 'jours restants:', daysLeft);
+    
+    const { data, error } = await sendResendEmail({
+      from: 'Sama Boutik <reminder@resend.dev>',
+      to: 'bamba.remun2025@gmail.com', // Mode test
+      subject: `⏳ Plus que ${daysLeft} jour${daysLeft > 1 ? 's' : ''} sur votre essai gratuit Sama Boutik !`,
+      html: `
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <style>
+                body { font-family: 'Segoe UI', system-ui, sans-serif; line-height: 1.6; color: #1a202c; margin: 0; padding: 0; background: #f7fafc; }
+                .container { max-width: 600px; margin: 0 auto; background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 10px 25px rgba(0,0,0,0.05); }
+                .header { background: linear-gradient(135deg, #f6ad55 0%, #ed8936 100%); color: white; padding: 40px 30px; text-align: center; }
+                .logo { font-size: 32px; font-weight: 800; margin-bottom: 10px; }
+                .content { padding: 40px 30px; }
+                .greeting { color: #2d3748; font-size: 26px; margin-bottom: 15px; font-weight: 600; }
+                .main-text { color: #4a5568; font-size: 16px; margin-bottom: 25px; line-height: 1.8; }
+                .warning-box { background: #fffaf0; padding: 25px; border-radius: 10px; margin: 30px 0; border-left: 4px solid #ed8936; }
+                .countdown { background: linear-gradient(135deg, #f6e05e 0%, #d69e2e 100%); color: #744210; padding: 25px; border-radius: 10px; margin: 30px 0; text-align: center; }
+                .features-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin: 25px 0; }
+                .feature { background: #f8fafc; padding: 20px; border-radius: 8px; border: 1px solid #e2e8f0; text-align: center; }
+                .button-primary { display: inline-block; padding: 16px 40px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px; margin: 20px 0; }
+                .faq-section { background: #ebf8ff; padding: 25px; border-radius: 10px; margin: 30px 0; border-left: 4px solid #4299e1; }
+                .footer { border-top: 1px solid #e2e8f0; padding-top: 30px; margin-top: 40px; color: #718096; font-size: 14px; text-align: center; }
+                @media (max-width: 600px) {
+                    .features-grid { grid-template-columns: 1fr; }
+                    .content { padding: 30px 20px; }
+                    .header { padding: 30px 20px; }
+                }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="header">
+                    <div class="logo">⏳ SAMA BOUTIK</div>
+                    <h1 style="margin: 10px 0; font-size: 28px;">Votre essai expire bientôt !</h1>
+                </div>
+                <div class="content">
+                    <h2 class="greeting">Bonjour ${name},</h2>
+                    
+                    <p class="main-text">
+                        Nous espérons que vous appréciez votre essai gratuit de Sama Boutik !<br>
+                        Nous avons une importante information à vous communiquer...
+                    </p>
+                    
+                    <div class="warning-box">
+                        <h3 style="color: #c05621; margin-top: 0;">⚠️ IMPORTANT : Votre essai gratuit expire dans ${daysLeft} jour${daysLeft > 1 ? 's' : ''}</h3>
+                        <p style="color: #744210; margin-bottom: 0;">
+                            Après le ${new Date(Date.now() + daysLeft * 24 * 60 * 60 * 1000).toLocaleDateString('fr-FR')}, vous perdrez l'accès à :
+                        </p>
+                    </div>
+                    
+                    <div class="countdown">
+                        <h2 style="margin-top: 0; font-size: 24px;">⏰ COMPTE À REBOURS</h2>
+                        <p style="font-size: 48px; font-weight: 800; margin: 10px 0;">
+                            ${daysLeft} jour${daysLeft > 1 ? 's' : ''}
+                        </p>
+                        <p style="margin-bottom: 0;">
+                            Avant la fin de votre accès gratuit
+                        </p>
+                    </div>
+                    
+                    <div class="features-grid">
+                        <div class="feature">
+                            <div style="font-size: 24px; margin-bottom: 10px;">📦</div>
+                            <div style="font-weight: 600; color: #2d3748;">Création de produits</div>
+                        </div>
+                        <div class="feature">
+                            <div style="font-size: 24px; margin-bottom: 10px;">💰</div>
+                            <div style="font-weight: 600; color: #2d3748;">Ventes en ligne</div>
+                        </div>
+                        <div class="feature">
+                            <div style="font-size: 24px; margin-bottom: 10px;">📊</div>
+                            <div style="font-weight: 600; color: #2d3748;">Analytics avancés</div>
+                        </div>
+                        <div class="feature">
+                            <div style="font-size: 24px; margin-bottom: 10px;">🚀</div>
+                            <div style="font-weight: 600; color: #2d3748;">Boutique personnalisée</div>
+                        </div>
+                    </div>
+                    
+                    <div style="text-align: center;">
+                        <h3 style="color: #2d3748;">Ne perdez pas votre progression !</h3>
+                        <p style="color: #4a5568;">
+                            <strong>${name}</strong>, vous avez investi du temps pour configurer votre boutique.<br>
+                            Continuez à en profiter pour seulement <strong>500 FCFA par jour</strong>.
+                        </p>
+                        <a href="https://samaboutiksn.netlify.app/pricing" class="button-primary">
+                            🚀 PASSER EN PREMIUM MAINTENANT
+                        </a>
+                        <p style="color: #718096; font-size: 14px; margin-top: 10px;">
+                            Garantie satisfait ou remboursé sous 14 jours
+                        </p>
+                    </div>
+                    
+                    <div class="faq-section">
+                        <h3 style="color: #2b6cb0; margin-top: 0;">❓ Questions fréquentes</h3>
+                        <p style="color: #4a5568; margin-bottom: 5px;">
+                            <strong>Q: Que se passe-t-il si je ne fais rien ?</strong><br>
+                            R: Vous perdrez l'accès à votre boutique et vos données seront conservées 30 jours.
+                        </p>
+                        <p style="color: #4a5568; margin-bottom: 5px;">
+                            <strong>Q: Puis-je exporter mes données ?</strong><br>
+                            R: Oui, même après expiration, vous pouvez exporter vos produits et ventes.
+                        </p>
+                        <p style="color: #4a5568; margin-bottom: 0;">
+                            <strong>Q: Puis-je payer plus tard ?</strong><br>
+                            R: Oui, mais vous perdrez l'accès entre-temps. Mieux vaut maintenir l'accès continu.
+                        </p>
+                    </div>
+                    
+                    <div style="text-align: center; margin: 30px 0;">
+                        <p style="color: #4a5568;">
+                            <strong>Besoin d'aide pour décider ?</strong><br>
+                            Répondez à cet email pour une consultation gratuite de 15 minutes.
+                        </p>
+                    </div>
+                    
+                    <div class="footer">
+                        <p><strong>L'équipe Sama Boutik</strong></p>
+                        <p>Nous croyons en votre succès e-commerce ! 💪</p>
+                        <div style="margin-top: 20px; color: #4a5568;">
+                            📧 support@samaboutik.com | 📞 +221 77 000 0000<br>
+                            <a href="https://samaboutiksn.netlify.app" style="color: #667eea; text-decoration: none;">samaboutiksn.netlify.app</a>
+                        </div>
+                    </div>
+                    
+                    <!-- Note test -->
+                    <div style="background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0; border-radius: 5px;">
+                        <p style="margin: 0; color: #856404;">
+                            <strong>📝 Note test :</strong> Cet email était destiné à ${email} (${name})<br>
+                            En production, il sera envoyé directement à l'utilisateur.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </body>
+        </html>
+      `
+    });
+
+    if (error) {
+      console.error('❌ Erreur Resend reminder:', error);
+      return res.status(500).json({ error: error.message });
+    }
+
+    console.log('✅ Email rappel envoyé:', data?.id);
+    res.json({ 
+      success: true, 
+      message: 'Email rappel envoyé en mode test', 
+      data,
+      note: `Rappel de ${daysLeft} jours envoyé à bamba.remun2025@gmail.com`
+    });
+
+  } catch (error) {
+    console.error('💥 Erreur serveur:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // 3. Email après expiration de l'essai (Pourquoi pas Premium ?)
 app.post('/api/emails/trial-expired-followup', async (req, res) => {
   try {
