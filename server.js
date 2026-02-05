@@ -9,7 +9,6 @@ const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const dotenv = require('dotenv');
-const { Resend } = require('resend');
 
 dotenv.config();
 
@@ -24,7 +23,41 @@ const supabase = createClient(supabaseUrl, supabaseAnonKey);
 const app = express();
 const PORT = process.env.PORT || 10000;
 
-const resend = new Resend('re_BrpJK9xp_G1SA1AccoiXJfjhTN3QFG2fu');
+const RESEND_API_KEY = 're_BrpJK9xp_G1SA1AccoiXJfjhTN3QFG2fu';
+async function sendResendEmail({ from, to, subject, html }) {
+  try {
+    console.log('📤 Envoi email à:', to);
+    
+    const response = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${RESEND_API_KEY}`,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify({ from, to, subject, html })
+    });
+    
+    const data = await response.json();
+    
+    if (!response.ok) {
+      console.error('❌ Erreur Resend API:', data);
+      return { error: data.message || 'Erreur API Resend' };
+    }
+    
+    console.log('✅ Email envoyé avec succès:', data.id);
+    return { data };
+    
+  } catch (error) {
+    console.error('💥 Erreur fetch Resend:', error.message);
+    return { error: error.message };
+  }
+}
+console.log('✅ Resend configuré avec API directe');
+// ===============================================================================
+
+console.log('✅ Serveur prêt sur le port:', PORT);
+
 console.log('✅ Resend initialisé avec ta clé API');
 
 console.log('✅ Express loaded:', typeof express);
@@ -5398,7 +5431,7 @@ app.post('/api/emails/welcome-trial', async (req, res) => {
     
     console.log('📧 Envoi email essai gratuit à:', email);
     
-    const { data, error } = await resend.emails.send({
+    const { data, error } = await sendResendEmail({
       from: 'Sama Boutik <onboarding@resend.dev>',
       to: email,
       subject: '🆓 Bienvenue sur votre essai gratuit Sama Boutik !',
@@ -5576,7 +5609,7 @@ app.post('/api/emails/premium-welcome', async (req, res) => {
     
     console.log('🎉 Envoi email premium à:', email);
     
-    const { data, error } = await resend.emails.send({
+   const { data, error } = await sendResendEmail({
       from: 'Sama Boutik <premium@resend.dev>',
       to: email,
       subject: '🎊 Félicitations ! Vous êtes maintenant Premium sur Sama Boutik',
@@ -5743,7 +5776,7 @@ app.post('/api/emails/trial-expired-followup', async (req, res) => {
     
     console.log('❓ Envoi email followup essai expiré à:', email);
     
-    const { data, error } = await resend.emails.send({
+   const { data, error } = await sendResendEmail({
       from: 'Sama Boutik <feedback@resend.dev>',
       to: email,
       subject: '🤔 Avez-vous rencontré des difficultés avec Sama Boutik ?',
@@ -5910,7 +5943,7 @@ app.post('/api/emails/test-all', async (req, res) => {
     const tests = [];
     
     // Test 1: Email essai gratuit
-    const test1 = await resend.emails.send({
+   const test1 = await sendResendEmail({
       from: 'Sama Boutik <onboarding@resend.dev>',
       to: email,
       subject: 'TEST: Email Essai Gratuit',
@@ -5919,7 +5952,7 @@ app.post('/api/emails/test-all', async (req, res) => {
     tests.push({ test: 'essai-gratuit', success: !test1.error });
     
     // Test 2: Email premium
-    const test2 = await resend.emails.send({
+   const test2 = await sendResendEmail({
       from: 'Sama Boutik <premium@resend.dev>',
       to: email,
       subject: 'TEST: Email Premium',
