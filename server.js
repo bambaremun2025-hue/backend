@@ -5421,67 +5421,110 @@ app.get('/api/admin/user-stats', requireAdmin, async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
-// ==================== 📧 ROUTES EMAIL (VERSION SIMPLIFIÉE) ====================
+// ==================== 📧 SERVICE EMAIL BREVO ====================
 
-console.log('📧 Email service en mode développement');
+let brevo;
+let BREVO_ENABLED = false;
+let apiInstance;
 
-// Service email simulé
-const emailService = {
-  sendWelcomeTrial: async (email, name, trialDays = 14) => {
-    console.log(`📧 [SIMULATION] Welcome trial à ${name} <${email}> (${trialDays} jours)`);
-    return { success: true, simulated: true };
-  },
+try {
+  brevo = require('@getbrevo/brevo');
+  console.log('✅ Package Brevo chargé');
   
-  sendTrialExpired: async (email, name, daysSinceExpired = 0) => {
-    console.log(`📧 [SIMULATION] Trial expired à ${name} <${email}> (${daysSinceExpired} jours)`);
-    return { success: true, simulated: true };
-  },
+  const BREVO_API_KEY = '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';
+  const defaultClient = brevo.ApiClient.instance;
+  const apiKey = defaultClient.authentications['api-key'];
+  apiKey.apiKey = BREVO_API_KEY;
   
-  sendWelcomePremium: async (email, name, months = 1) => {
-    console.log(`📧 [SIMULATION] Welcome premium à ${name} <${email}> (${months} mois)`);
-    return { success: true, simulated: true };
-  },
+  apiInstance = new brevo.TransactionalEmailsApi();
+  BREVO_ENABLED = true;
+  console.log('✅ Brevo configuré');
   
-  sendPremiumExpiring: async (email, name, daysLeft = 7) => {
-    console.log(`📧 [SIMULATION] Premium expiring à ${name} <${email}> (${daysLeft} jours)`);
-    return { success: true, simulated: true };
+} catch (error) {
+  console.warn('⚠️ Brevo non disponible:', error.message);
+}
+
+const sendEmail = async (toEmail, toName, subject, htmlContent, emailType = 'general') => {
+  try {
+    console.log(`📧 [${emailType}] Préparation pour ${toName} <${toEmail}>`);
+    
+    if (!BREVO_ENABLED || !apiInstance) {
+      console.log(`📧 [SIMULATION] ${emailType} à ${toName} <${toEmail}>`);
+      return { success: true, simulated: true };
+    }
+    
+    const sendSmtpEmail = new brevo.SendSmtpEmail();
+    sendSmtpEmail.subject = subject;
+    sendSmtpEmail.htmlContent = htmlContent;
+    sendSmtpEmail.sender = { name: "Sama Boutik", email: "noreply@samaboutik.sn" };
+    sendSmtpEmail.to = [{ email: toEmail, name: toName }];
+    sendSmtpEmail.replyTo = { email: "samaboutiksen@gmail.com", name: "Support Sama Boutik" };
+    
+    const data = await apiInstance.sendTransacEmail(sendSmtpEmail);
+    console.log(`✅ Email envoyé: ${data.messageId}`);
+    
+    return { success: true, messageId: data.messageId, provider: 'Brevo' };
+    
+  } catch (error) {
+    console.error(`❌ Erreur:`, error.message);
+    console.log(`📧 [FALLBACK] ${emailType} à ${toName} <${toEmail}>`);
+    return { success: true, simulated: true, error: error.message };
   }
 };
+
+// ==================== ROUTES EMAIL ====================
 
 // 1. EMAIL BIENVENUE ESSAI GRATUIT
 app.post('/api/emails/welcome-trial', async (req, res) => {
   try {
     const { email, name, trialDays = 14 } = req.body;
     
-    console.log('📧 [API] /welcome-trial appelé pour:', email);
+    console.log('📧 /welcome-trial pour:', email);
     
     if (!email || !name) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'Email et nom requis' 
-      });
+      return res.status(400).json({ success: false, error: 'Email et nom requis' });
     }
 
-    const result = await emailService.sendWelcomeTrial(email, name, trialDays);
-    
+    const htmlContent = `
+    <!DOCTYPE html>
+    <html><head><meta charset="UTF-8"></head>
+    <body style="font-family: Arial; padding: 20px;">
+      <h1>🎉 Bienvenue ${name} !</h1>
+      <p>Votre essai gratuit de ${trialDays} jours est activé.</p>
+      <p><strong>Vos avantages :</strong></p>
+      <ul>
+        <li>✅ ${trialDays} jours d'essai</li>
+        <li>✅ 5 produits maximum</li>
+        <li>✅ 5 ventes maximum</li>
+        <li>✅ Boutique publique</li>
+      </ul>
+      <a href="https://samaboutiksn.netlify.app/dashboard" 
+         style="background: #667eea; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; display: inline-block; margin: 15px 0;">
+        🚀 Accéder à mon tableau de bord
+      </a>
+      <p><small>© 2024 Sama Boutik</small></p>
+    </body></html>
+    `;
+
+    const result = await sendEmail(
+      email,
+      name,
+      `🎉 Bienvenue sur Sama Boutik - Essai gratuit de ${trialDays} jours`,
+      htmlContent,
+      'welcome-trial'
+    );
+
     res.json({
       success: true,
-      message: 'Email de bienvenue sera envoyé',
-      simulated: true,
-      data: {
-        recipient: email,
-        name: name,
-        trial_days: trialDays,
-        next_step: 'Installer @getbrevo/brevo pour les emails réels'
-      }
+      message: BREVO_ENABLED ? 'Email envoyé' : 'Email simulé',
+      simulated: !BREVO_ENABLED,
+      recipient: email,
+      brevo_enabled: BREVO_ENABLED
     });
 
   } catch (error) {
-    console.error('💥 Erreur /welcome-trial:', error);
-    res.status(500).json({ 
-      success: false,
-      error: error.message 
-    });
+    console.error('💥 Erreur:', error);
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
@@ -5490,35 +5533,52 @@ app.post('/api/emails/trial-expired', async (req, res) => {
   try {
     const { email, name, daysSinceExpired = 0 } = req.body;
     
-    console.log('📧 [API] /trial-expired appelé pour:', email);
+    console.log('📧 /trial-expired pour:', email);
     
     if (!email || !name) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'Email et nom requis' 
-      });
+      return res.status(400).json({ success: false, error: 'Email et nom requis' });
     }
 
-    const result = await emailService.sendTrialExpired(email, name, daysSinceExpired);
-    
+    const htmlContent = `
+    <!DOCTYPE html>
+    <html><head><meta charset="UTF-8"></head>
+    <body style="font-family: Arial; padding: 20px;">
+      <h1>⚠️ Votre essai Sama Boutik a expiré</h1>
+      <p>Bonjour ${name},</p>
+      <p>Votre essai gratuit a expiré il y a ${daysSinceExpired} jour${daysSinceExpired > 1 ? 's' : ''}.</p>
+      <p><strong>Passez Premium pour :</strong></p>
+      <ul>
+        <li>✅ Produits illimités</li>
+        <li>✅ Ventes illimitées</li>
+        <li>✅ Statistiques avancées</li>
+        <li>✅ Support prioritaire</li>
+      </ul>
+      <a href="https://samaboutiksn.netlify.app/pricing" 
+         style="background: #dc2626; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; display: inline-block; margin: 15px 0;">
+        🔓 PASSER PREMIUM
+      </a>
+      <p><small>Questions ? samaboutiksen@gmail.com</small></p>
+    </body></html>
+    `;
+
+    const result = await sendEmail(
+      email,
+      name,
+      `⏰ Votre essai Sama Boutik a expiré - Réactivez votre boutique`,
+      htmlContent,
+      'trial-expired'
+    );
+
     res.json({
       success: true,
-      message: 'Email d\'expiration sera envoyé',
-      simulated: true,
-      data: {
-        recipient: email,
-        name: name,
-        days_since_expired: daysSinceExpired,
-        status: 'trial_expired'
-      }
+      message: BREVO_ENABLED ? 'Email envoyé' : 'Email simulé',
+      simulated: !BREVO_ENABLED,
+      recipient: email
     });
 
   } catch (error) {
-    console.error('💥 Erreur /trial-expired:', error);
-    res.status(500).json({ 
-      success: false,
-      error: error.message 
-    });
+    console.error('💥 Erreur:', error);
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
@@ -5527,35 +5587,58 @@ app.post('/api/emails/welcome-premium', async (req, res) => {
   try {
     const { email, name, months = 1 } = req.body;
     
-    console.log('📧 [API] /welcome-premium appelé pour:', email);
+    console.log('📧 /welcome-premium pour:', email);
     
     if (!email || !name) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'Email et nom requis' 
-      });
+      return res.status(400).json({ success: false, error: 'Email et nom requis' });
     }
 
-    const result = await emailService.sendWelcomePremium(email, name, months);
-    
+    const endDate = new Date();
+    endDate.setMonth(endDate.getMonth() + months);
+    const formattedDate = endDate.toLocaleDateString('fr-FR');
+
+    const htmlContent = `
+    <!DOCTYPE html>
+    <html><head><meta charset="UTF-8"></head>
+    <body style="font-family: Arial; padding: 20px;">
+      <h1>🏆 FÉLICITATIONS ${name} !</h1>
+      <p>Vous êtes maintenant membre Premium Sama Boutik.</p>
+      <p><strong>Votre abonnement est valide jusqu'au ${formattedDate}</strong></p>
+      <p><strong>Vos avantages Premium :</strong></p>
+      <ul>
+        <li>✅ Produits illimités</li>
+        <li>✅ Ventes illimitées</li>
+        <li>✅ Analytics avancés</li>
+        <li>✅ Support prioritaire</li>
+        <li>✅ Boutique optimisée</li>
+      </ul>
+      <a href="https://samaboutiksn.netlify.app/dashboard" 
+         style="background: #10b981; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; display: inline-block; margin: 15px 0;">
+        🚀 ACCÉDER AU DASHBOARD PREMIUM
+      </a>
+      <p><small>Merci pour votre confiance !</small></p>
+    </body></html>
+    `;
+
+    const result = await sendEmail(
+      email,
+      name,
+      `🏆 Félicitations ! Votre compte Premium Sama Boutik est activé`,
+      htmlContent,
+      'welcome-premium'
+    );
+
     res.json({
       success: true,
-      message: 'Email de bienvenue premium sera envoyé',
-      simulated: true,
-      data: {
-        recipient: email,
-        name: name,
-        subscription_months: months,
-        status: 'premium_activated'
-      }
+      message: BREVO_ENABLED ? 'Email envoyé' : 'Email simulé',
+      simulated: !BREVO_ENABLED,
+      recipient: email,
+      subscription_end: formattedDate
     });
 
   } catch (error) {
-    console.error('💥 Erreur /welcome-premium:', error);
-    res.status(500).json({ 
-      success: false,
-      error: error.message 
-    });
+    console.error('💥 Erreur:', error);
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
@@ -5564,35 +5647,57 @@ app.post('/api/emails/premium-expiring', async (req, res) => {
   try {
     const { email, name, daysLeft = 7 } = req.body;
     
-    console.log('📧 [API] /premium-expiring appelé pour:', email);
+    console.log('📧 /premium-expiring pour:', email);
     
     if (!email || !name) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'Email et nom requis' 
-      });
+      return res.status(400).json({ success: false, error: 'Email et nom requis' });
     }
 
-    const result = await emailService.sendPremiumExpiring(email, name, daysLeft);
-    
+    const subject = daysLeft === 1 
+      ? '🚨 DERNIER JOUR - Votre Premium expire demain !' 
+      : `⏰ ${daysLeft} jours restants - Votre Premium expire`;
+
+    const htmlContent = `
+    <!DOCTYPE html>
+    <html><head><meta charset="UTF-8"></head>
+    <body style="font-family: Arial; padding: 20px;">
+      <h1>⏰ ${daysLeft} jour${daysLeft > 1 ? 's' : ''} restant${daysLeft > 1 ? 's' : ''}</h1>
+      <p>Bonjour ${name},</p>
+      <p>Votre abonnement Premium expire dans <strong>${daysLeft} jour${daysLeft > 1 ? 's' : ''}</strong>.</p>
+      <p><strong>Renouvelez maintenant pour :</strong></p>
+      <ul>
+        <li>✅ Continuer sans interruption</li>
+        <li>✅ Conserver tous vos avantages</li>
+        <li>✅ Éviter les limites</li>
+        <li>✅ Garder vos données</li>
+      </ul>
+      <a href="https://samaboutiksn.netlify.app/renew" 
+         style="background: #f59e0b; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; display: inline-block; margin: 15px 0;">
+        🔄 RENOUVELER MON ABONNEMENT
+      </a>
+      <p><small>Questions ? samaboutiksen@gmail.com</small></p>
+    </body></html>
+    `;
+
+    const result = await sendEmail(
+      email,
+      name,
+      subject,
+      htmlContent,
+      'premium-expiring'
+    );
+
     res.json({
       success: true,
-      message: 'Email d\'expiration premium sera envoyé',
-      simulated: true,
-      data: {
-        recipient: email,
-        name: name,
-        days_left: daysLeft,
-        urgency: daysLeft <= 3 ? 'high' : daysLeft <= 7 ? 'medium' : 'low'
-      }
+      message: BREVO_ENABLED ? 'Email envoyé' : 'Email simulé',
+      simulated: !BREVO_ENABLED,
+      recipient: email,
+      days_left: daysLeft
     });
 
   } catch (error) {
-    console.error('💥 Erreur /premium-expiring:', error);
-    res.status(500).json({ 
-      success: false,
-      error: error.message 
-    });
+    console.error('💥 Erreur:', error);
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
@@ -5602,131 +5707,49 @@ app.post('/api/emails/test', async (req, res) => {
     const { email } = req.body;
     const testEmail = email || 'samaboutiksen@gmail.com';
     
-    console.log('🧪 [API] Test email service pour:', testEmail);
+    console.log('🧪 Test email service pour:', testEmail);
     
-    // Test toutes les fonctions
-    await emailService.sendWelcomeTrial(testEmail, 'Test User', 14);
-    await emailService.sendTrialExpired(testEmail, 'Test User', 1);
-    await emailService.sendWelcomePremium(testEmail, 'Test User', 1);
-    await emailService.sendPremiumExpiring(testEmail, 'Test User', 3);
-    
+    // Test avec un email simple
+    const htmlContent = `
+    <!DOCTYPE html>
+    <html><head><meta charset="UTF-8"></head>
+    <body style="font-family: Arial; padding: 20px;">
+      <h1>🧪 Test Brevo - Sama Boutik</h1>
+      <p>Ceci est un email test envoyé depuis votre serveur Render.</p>
+      <p>Si vous recevez ceci, Brevo fonctionne correctement !</p>
+      <p><strong>Status:</strong> ${BREVO_ENABLED ? '✅ Brevo ACTIF' : '⚠️ Brevo SIMULATION'}</p>
+      <p><small>Timestamp: ${new Date().toISOString()}</small></p>
+    </body></html>
+    `;
+
+    const result = await sendEmail(
+      testEmail,
+      'Test User',
+      '🧪 Test Brevo - Sama Boutik',
+      htmlContent,
+      'test'
+    );
+
     res.json({
       success: true,
-      message: 'Email service test réussi',
-      service_status: 'simulation_active',
-      provider: 'development_mode',
-      next_steps: [
-        '1. Ajouter "@getbrevo/brevo" à package.json',
-        '2. Pousser sur GitHub',
-        '3. Render installera automatiquement le package',
-        '4. Implémenter les vraies fonctions Brevo'
-      ],
-      test_data: {
-        email: testEmail,
-        timestamp: new Date().toISOString(),
-        endpoints_tested: [
-          '/api/emails/welcome-trial',
-          '/api/emails/trial-expired', 
-          '/api/emails/welcome-premium',
-          '/api/emails/premium-expiring'
-        ]
-      }
+      message: 'Test email complété',
+      brevo_enabled: BREVO_ENABLED,
+      simulated: !BREVO_ENABLED,
+      test_email: testEmail,
+      result: result
     });
 
   } catch (error) {
     console.error('💥 Erreur test:', error);
     res.status(500).json({ 
       success: false,
-      error: error.message 
+      error: error.message,
+      brevo_enabled: BREVO_ENABLED
     });
   }
 });
 
-// 6. EMAIL SERVICE STATUS
-app.get('/api/emails/status', async (req, res) => {
-  try {
-    res.json({
-      success: true,
-      service: 'sama_boutik_email_service',
-      status: 'simulation_mode',
-      provider: 'development',
-      features: {
-        welcome_trial: 'available',
-        trial_expired: 'available', 
-        welcome_premium: 'available',
-        premium_expiring: 'available',
-        real_email_sending: 'pending_brevo_installation'
-      },
-      configuration_required: [
-        'Package: @getbrevo/brevo',
-        'API Key: Brevo dashboard',
-        'Sender email: noreply@samaboutik.sn'
-      ],
-      endpoints: [
-        'POST /api/emails/welcome-trial',
-        'POST /api/emails/trial-expired',
-        'POST /api/emails/welcome-premium', 
-        'POST /api/emails/premium-expiring',
-        'POST /api/emails/test',
-        'GET /api/emails/status'
-      ]
-    });
-
-  } catch (error) {
-    res.status(500).json({ 
-      success: false,
-      error: error.message 
-    });
-  }
-});
-
-// ==================== INTÉGRATION AVEC LES AUTRES ROUTES ====================
-
-// Dans votre route d'inscription (/api/auth/register), appelez comme ceci :
-/*
-try {
-  // Après avoir créé l'utilisateur
-  await fetch('https://backend-s05x.onrender.com/api/emails/welcome-trial', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      email: email,
-      name: userName,
-      trialDays: 14
-    })
-  });
-} catch (emailError) {
-  console.log('⚠️ Email non envoyé (simulation):', emailError.message);
-}
-*/
-
-// Quand un utilisateur passe premium :
-/*
-await fetch('https://backend-s05x.onrender.com/api/emails/welcome-premium', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({
-    email: userEmail,
-    name: userName,
-    months: 1
-  })
-});
-*/
-
-// Quand l'essai expire :
-/*
-await fetch('https://backend-s05x.onrender.com/api/emails/trial-expired', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({
-    email: userEmail,
-    name: userName,
-    daysSinceExpired: 1
-  })
-});
-*/
-
-console.log('✅ Routes email configurées (mode simulation)');
+console.log('✅ Routes email configurées (Brevo: ' + (BREVO_ENABLED ? 'ACTIF' : 'SIMULATION') + ')');
 
 
 app.listen(PORT, '0.0.0.0', () => {
