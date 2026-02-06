@@ -5422,736 +5422,82 @@ app.get('/api/admin/user-stats', requireAdmin, async (req, res) => {
   }
 });
 
-// ==================== 📧 ROUTES EMAIL RESEND ====================
+// ==================== 📧 ROUTE EMAILJS - WELCOME TRIAL ====================
+const emailjs = require('emailjs-com');
+emailjs.init('eprizDJCRJQ_JfqbQ'); // Ta clé publique EmailJS
 
 // 1. Email après inscription (Essai gratuit)
 app.post('/api/emails/welcome-trial', async (req, res) => {
   try {
     const { email, name } = req.body;
     
-    console.log('📧 Envoi email essai gratuit à:', email);
+    console.log('📧 [EmailJS PROD] Envoi welcome-trial à:', email);
     
-    const { data, error } = await sendResendEmail({
-      from: 'Sama Boutik <onboarding@resend.dev>',
-      to: 'bamba.remun2025@gmail.com', 
-      subject: '🆓 Bienvenue sur votre essai gratuit Sama Boutik !',
-      html: `
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <style>
-                body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; line-height: 1.6; color: #1a202c; margin: 0; padding: 0; background: #f7fafc; }
-                .container { max-width: 600px; margin: 0 auto; background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 10px 25px rgba(0,0,0,0.05); }
-                .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 40px 30px; text-align: center; }
-                .logo { font-size: 32px; font-weight: 800; margin-bottom: 10px; letter-spacing: -0.5px; }
-                .tagline { font-size: 18px; opacity: 0.95; font-weight: 300; }
-                .content { padding: 40px 30px; }
-                .greeting { color: #2d3748; font-size: 26px; margin-bottom: 10px; font-weight: 700; }
-                .intro { color: #4a5568; font-size: 16px; margin-bottom: 30px; line-height: 1.8; }
-                .highlight-box { background: linear-gradient(135deg, #f6e05e 0%, #d69e2e 100%); color: #744210; padding: 25px; border-radius: 10px; margin: 30px 0; }
-                .features-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin: 30px 0; }
-                .feature { background: #f8fafc; padding: 20px; border-radius: 8px; border: 1px solid #e2e8f0; transition: transform 0.2s; }
-                .feature:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
-                .feature-icon { font-size: 28px; margin-bottom: 12px; }
-                .feature-title { font-weight: 600; color: #2d3748; margin-bottom: 8px; font-size: 16px; }
-                .feature-desc { color: #718096; font-size: 14px; line-height: 1.5; }
-                .steps { background: #edf2f7; padding: 25px; border-radius: 10px; margin: 30px 0; }
-                .step { display: flex; align-items: flex-start; margin-bottom: 20px; }
-                .step-number { background: #667eea; color: white; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; margin-right: 15px; flex-shrink: 0; }
-                .step-content { flex: 1; }
-                .button-primary { display: inline-block; padding: 16px 40px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px; margin: 20px 0; transition: transform 0.2s, box-shadow 0.2s; box-shadow: 0 4px 6px rgba(102, 126, 234, 0.2); }
-                .button-primary:hover { transform: translateY(-2px); box-shadow: 0 6px 12px rgba(102, 126, 234, 0.3); }
-                .support-box { background: #ebf8ff; border-left: 4px solid #4299e1; padding: 20px; border-radius: 8px; margin: 30px 0; }
-                .footer { border-top: 1px solid #e2e8f0; padding-top: 25px; margin-top: 40px; color: #718096; font-size: 14px; text-align: center; }
-                .contact-info { color: #4a5568; margin-top: 15px; }
-                @media (max-width: 600px) {
-                    .features-grid { grid-template-columns: 1fr; }
-                    .content { padding: 30px 20px; }
-                    .header { padding: 30px 20px; }
-                }
-            </style>
-        </head>
-        <body>
-            <div class="container">
-                <div class="header">
-                    <div class="logo">🚀 SAMA BOUTIK</div>
-                    <div class="tagline">Votre boutique en ligne professionnelle</div>
-                </div>
-                <div class="content">
-                    <h1 class="greeting">Cher/Chère ${name},</h1>
-                    <p class="intro">
-                        Bienvenue sur Sama Boutik et merci d'avoir activé votre essai gratuit de 14 jours ! 🌟<br>
-                        Nous sommes ravis de vous accompagner dans la découverte de notre plateforme e-commerce conçue spécialement pour les entrepreneurs comme vous.
-                    </p>
-                    
-                    <div class="highlight-box">
-                        <h3 style="margin-top: 0; color: #744210;">🎁 ESSAI GRATUIT DE 14 JOURS ACTIVÉ</h3>
-                        <p style="margin-bottom: 0; font-weight: 500;">Accès complet à toutes les fonctionnalités Premium</p>
-                    </div>
-                    
-                    <p class="intro">Pendant votre essai gratuit, vous avez accès à :</p>
-                    
-                    <div class="features-grid">
-                        <div class="feature">
-                            <div class="feature-icon">✨</div>
-                            <div class="feature-title">Toutes les fonctionnalités Premium</div>
-                            <div class="feature-desc">Testez toutes les options sans restriction</div>
-                        </div>
-                        <div class="feature">
-                            <div class="feature-icon">🌐</div>
-                            <div class="feature-title">Création automatique de site internet</div>
-                            <div class="feature-desc">Votre boutique en ligne prête en minutes</div>
-                        </div>
-                        <div class="feature">
-                            <div class="feature-icon">📦</div>
-                            <div class="feature-title">Création de produits</div>
-                            <div class="feature-desc">Ajoutez et gérez votre catalogue</div>
-                        </div>
-                        <div class="feature">
-                            <div class="feature-icon">📊</div>
-                            <div class="feature-title">Gestion complète de votre inventaire</div>
-                            <div class="feature-desc">Suivez vos stocks en temps réel</div>
-                        </div>
-                        <div class="feature">
-                            <div class="feature-icon">📈</div>
-                            <div class="feature-title">Tableaux de bord analytiques</div>
-                            <div class="feature-desc">Visualisez vos performances</div>
-                        </div>
-                        <div class="feature">
-                            <div class="feature-icon">👨‍💻</div>
-                            <div class="feature-title">Support technique inclus</div>
-                            <div class="feature-desc">Notre équipe vous assiste</div>
-                        </div>
-                    </div>
-                    
-                    <div class="steps">
-                        <h3 style="margin-top: 0; color: #2d3748;">Pour tirer le meilleur parti de votre essai :</h3>
-                        <div class="step">
-                            <div class="step-number">1</div>
-                            <div class="step-content">
-                                <strong>Importez vos premiers produits</strong>
-                                <p style="color: #718096; margin-top: 5px; font-size: 14px;">Ajoutez jusqu'à 5 produits gratuitement</p>
-                            </div>
-                        </div>
-                        <div class="step">
-                            <div class="step-number">2</div>
-                            <div class="step-content">
-                                <strong>Personnalisez votre boutique en ligne</strong>
-                                <p style="color: #718096; margin-top: 5px; font-size: 14px;">Choisissez un nom et configurez votre boutique</p>
-                            </div>
-                        </div>
-                        <div class="step">
-                            <div class="step-number">3</div>
-                            <div class="step-content">
-                                <strong>Testez le processus de commande complet</strong>
-                                <p style="color: #718096; margin-top: 5px; font-size: 14px;">Simulez une commande de A à Z</p>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div style="text-align: center;">
-                        <a href="https://samaboutiksn.netlify.app/dashboard" class="button-primary">
-                            🚀 Commencer Maintenant
-                        </a>
-                    </div>
-                    
-                    <div class="support-box">
-                        <h3 style="margin-top: 0; color: #2b6cb0;">Besoin d'aide ?</h3>
-                        <p style="color: #4a5568; margin-bottom: 15px;">Notre équipe est là pour vous guider ! N'hésitez pas à nous contacter pour :</p>
-                        <ul style="color: #4a5568; padding-left: 20px; margin-bottom: 0;">
-                            <li>Une démonstration personnalisée</li>
-                            <li>Des conseils de configuration</li>
-                            <li>Toute question technique</li>
-                        </ul>
-                        <p style="color: #2b6cb0; margin-top: 15px; font-weight: 600;">L'équipe Sama Boutik</p>
-                    </div>
-                    
-                    <div style="background: #f0fff4; padding: 20px; border-radius: 8px; border-left: 4px solid #48bb78; margin: 30px 0;">
-                        <p style="margin: 0; color: #276749;">
-                            <strong>PS :</strong> N'oubliez pas que vous pouvez passer à l'abonnement Premium à tout moment pour continuer à bénéficier de tous les avantages après votre essai !
-                        </p>
-                    </div>
-                    
-                    <div class="footer">
-                        <p>© 2024 Sama Boutik. Tous droits réservés.</p>
-                        <div class="contact-info">
-                            📧 support@samaboutik.com | 📞 +221 77 000 0000<br>
-                            <a href="https://samaboutiksn.netlify.app" style="color: #667eea; text-decoration: none;">samaboutiksn.netlify.app</a>
-                        </div>
-                    </div>
-                    
-                    <!-- Note test seulement en mode développement -->
-                    <div style="background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0; border-radius: 5px;">
-                        <p style="margin: 0; color: #856404;">
-                            <strong>📝 Note test :</strong> Cet email était destiné à ${email} (${name})<br>
-                            En production, il sera envoyé directement à l'utilisateur.
-                        </p>
-                    </div>
-                </div>
-            </div>
-        </body>
-        </html>
-      `
-    });
-
-    if (error) {
-      console.error('❌ Erreur Resend:', error);
-      return res.status(500).json({ error: error.message });
-    }
-
-    console.log('✅ Email essai gratuit envoyé:', data?.id);
+    // Paramètres pour ton template
+    const templateParams = {
+      to_name: name,
+      to_email: email,
+      trial_days: '30'  // Correspond à {{trial_days}} dans ton template
+    };
+    
+    // Envoi via EmailJS avec TON Template ID
+    const response = await emailjs.send(
+      'service_66g48gh',     // Ton Service ID Gmail
+      'template_r88540a',    // ⭐ TON TEMPLATE ID
+      templateParams
+    );
+    
+    console.log('✅ EmailJS envoyé avec succès');
     res.json({ 
       success: true, 
-      message: 'Email envoyé en mode test', 
-      data,
-      note: 'Email envoyé à bamba.remun2025@gmail.com (email vérifié Resend)'
+      message: 'Email de bienvenue envoyé',
+      email_provider: 'EmailJS',
+      template_used: 'welcome-trial'
     });
-
+    
   } catch (error) {
-    console.error('💥 Erreur serveur:', error);
-    res.status(500).json({ error: error.message });
+    console.error('❌ Erreur EmailJS:', error);
+    res.status(500).json({ 
+      success: false,
+      error: 'Erreur envoi email',
+      details: error.text || error.message,
+      provider: 'EmailJS'
+    });
   }
 });
 
-// 2. Email après passage en Premium
-app.post('/api/emails/premium-welcome', async (req, res) => {
+// 2. EMAIL ESSAI EXPIRÉ (nouvelle route)
+app.post('/api/emails/trial-expired', async (req, res) => {
   try {
-    const { email, name, endDate } = req.body;
+    const { email, name, days_since_expired } = req.body;
     
-    console.log('🎉 Envoi email premium à:', email);
+    console.log('📧 [EmailJS] Envoi trial-expired à:', email, 'jours:', days_since_expired);
     
-   const { data, error } = await sendResendEmail({
-      from: 'Sama Boutik <premium@resend.dev>',
-      to: email,
-      subject: '🎊 Félicitations ! Vous êtes maintenant Premium sur Sama Boutik',
-      html: `
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <style>
-                body { font-family: 'Segoe UI', system-ui, sans-serif; line-height: 1.6; color: #1a202c; margin: 0; padding: 0; background: #f7fafc; }
-                .container { max-width: 600px; margin: 0 auto; background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 15px 35px rgba(0,0,0,0.08); }
-                .header { background: linear-gradient(135deg, #9f7aea 0%, #805ad5 100%); color: white; padding: 50px 30px; text-align: center; position: relative; }
-                .header::after { content: '⭐'; position: absolute; font-size: 100px; opacity: 0.1; right: 20px; top: 20px; }
-                .header::before { content: '💎'; position: absolute; font-size: 80px; opacity: 0.1; left: 20px; bottom: 20px; }
-                .logo { font-size: 36px; font-weight: 800; margin-bottom: 15px; letter-spacing: -0.5px; }
-                .badge { background: rgba(255,255,255,0.2); padding: 8px 20px; border-radius: 20px; display: inline-block; margin-top: 10px; font-size: 14px; }
-                .content { padding: 50px 30px; }
-                .greeting { color: #2d3748; font-size: 28px; margin-bottom: 15px; font-weight: 700; }
-                .congrats { color: #4a5568; font-size: 18px; margin-bottom: 25px; line-height: 1.6; }
-                .premium-card { background: linear-gradient(135deg, #f6e05e 0%, #d69e2e 100%); color: #744210; padding: 25px; border-radius: 10px; margin: 30px 0; text-align: center; }
-                .features-section { margin: 40px 0; }
-                .features-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
-                .feature { text-align: center; padding: 25px 15px; background: #f8fafc; border-radius: 10px; transition: all 0.3s; }
-                .feature:hover { background: white; box-shadow: 0 10px 25px rgba(0,0,0,0.08); transform: translateY(-5px); }
-                .feature-icon { font-size: 40px; margin-bottom: 15px; }
-                .feature-title { font-weight: 700; color: #2d3748; margin-bottom: 10px; font-size: 16px; }
-                .feature-desc { color: #718096; font-size: 14px; line-height: 1.5; }
-                .unlimited-badge { background: #9f7aea; color: white; padding: 6px 15px; border-radius: 15px; font-size: 12px; font-weight: 600; display: inline-block; margin-top: 10px; }
-                .cta-section { text-align: center; margin: 40px 0; }
-                .button-premium { display: inline-block; padding: 18px 45px; background: linear-gradient(135deg, #9f7aea 0%, #805ad5 100%); color: white; text-decoration: none; border-radius: 10px; font-weight: 700; font-size: 18px; box-shadow: 0 8px 20px rgba(159, 122, 234, 0.3); transition: all 0.3s; }
-                .button-premium:hover { transform: translateY(-3px); box-shadow: 0 12px 25px rgba(159, 122, 234, 0.4); }
-                .support-section { background: #ebf8ff; padding: 25px; border-radius: 10px; margin: 40px 0; border-left: 4px solid #4299e1; }
-                .footer { border-top: 1px solid #e2e8f0; padding-top: 30px; margin-top: 50px; color: #718096; font-size: 14px; text-align: center; }
-                @media (max-width: 600px) {
-                    .features-grid { grid-template-columns: repeat(2, 1fr); }
-                    .content { padding: 30px 20px; }
-                    .header { padding: 40px 20px; }
-                }
-            </style>
-        </head>
-        <body>
-            <div class="container">
-                <div class="header">
-                    <div class="logo">🎊 SAMA BOUTIK PREMIUM</div>
-                    <div class="badge">Membre Premium</div>
-                    <h1 style="margin: 20px 0 10px; font-size: 32px; font-weight: 800;">Accès Illimité Débloqué</h1>
-                </div>
-                <div class="content">
-                    <h1 class="greeting">Félicitations ${name} !</h1>
-                    <p class="congrats">
-                        Vous faites maintenant partie de notre communauté Premium ! 🎉<br>
-                        Votre abonnement est actif jusqu'au <strong>${new Date(endDate).toLocaleDateString('fr-FR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</strong>.
-                    </p>
-                    
-                    <div class="premium-card">
-                        <h2 style="margin-top: 0; font-size: 24px;">✨ TOUTES LES LIMITES SUPPRIMÉES ✨</h2>
-                        <p style="margin-bottom: 0; font-size: 16px; font-weight: 500;">
-                            Profitez d'une expérience e-commerce complète sans restriction
-                        </p>
-                    </div>
-                    
-                    <div class="features-section">
-                        <h2 style="text-align: center; color: #2d3748; margin-bottom: 30px;">Vos avantages exclusifs :</h2>
-                        <div class="features-grid">
-                            <div class="feature">
-                                <div class="feature-icon">📦</div>
-                                <div class="feature-title">Produits Illimités</div>
-                                <div class="feature-desc">Ajoutez autant de produits que vous voulez</div>
-                                <div class="unlimited-badge">ILLIMITÉ</div>
-                            </div>
-                            <div class="feature">
-                                <div class="feature-icon">💰</div>
-                                <div class="feature-title">Ventes Illimitées</div>
-                                <div class="feature-desc">Physiques et en ligne sans restriction</div>
-                                <div class="unlimited-badge">ILLIMITÉ</div>
-                            </div>
-                            <div class="feature">
-                                <div class="feature-icon">🛒</div>
-                                <div class="feature-title">Boutique Personnalisée</div>
-                                <div class="feature-desc">Nom de domaine et design uniques</div>
-                            </div>
-                            <div class="feature">
-                                <div class="feature-icon">📊</div>
-                                <div class="feature-title">Analytics Avancés</div>
-                                <div class="feature-desc">Statistiques détaillées en temps réel</div>
-                            </div>
-                            <div class="feature">
-                                <div class="feature-icon">🚀</div>
-                                <div class="feature-title">Support Prioritaire</div>
-                                <div class="feature-desc">Réponse en moins de 2 heures</div>
-                            </div>
-                            <div class="feature">
-                                <div class="feature-icon">🎨</div>
-                                <div class="feature-title">Personnalisation Totale</div>
-                                <div class="feature-desc">Adaptez tout à votre marque</div>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div class="cta-section">
-                        <h2 style="color: #2d3748; margin-bottom: 20px;">🚀 Prêt à décoller ?</h2>
-                        <a href="https://samaboutiksn.netlify.app/dashboard" class="button-premium">
-                            ACCÉDER À MON DASHBOARD PREMIUM
-                        </a>
-                        <p style="color: #718096; margin-top: 15px; font-size: 14px;">
-                            Votre boutique est déjà configurée et prête à vendre
-                        </p>
-                    </div>
-                    
-                    <div class="support-section">
-                        <h3 style="color: #2b6cb0; margin-top: 0;">💡 Conseil du mois :</h3>
-                        <p style="color: #4a5568;">
-                            <strong>Optimisez vos titres de produits</strong> avec des mots-clés pertinents pour améliorer votre visibilité en ligne. 
-                            Nos utilisateurs Premium qui optimisent leurs titres voient en moyenne <strong>+40% de conversions</strong>.
-                        </p>
-                        <p style="color: #2b6cb0; margin-top: 20px; font-weight: 600;">
-                            Besoin d'aide pour maximiser votre abonnement ?<br>
-                            Répondez à cet email pour une consultation gratuite !
-                        </p>
-                    </div>
-                    
-                    <div style="background: #f0fff4; padding: 25px; border-radius: 10px; margin: 40px 0; text-align: center;">
-                        <h3 style="color: #276749; margin-top: 0;">💎 Votre investissement vous rapporte :</h3>
-                        <p style="color: #276749; margin-bottom: 0;">
-                            Pour seulement <strong>500 FCFA par jour</strong>, vous avez accès à une plateforme e-commerce complète 
-                            qui peut générer des revenus illimités. Bonne décision !
-                        </p>
-                    </div>
-                    
-                    <div class="footer">
-                        <p><strong>Merci pour votre confiance,</strong></p>
-                        <p>L'équipe Sama Boutik Premium</p>
-                        <div style="margin-top: 20px; color: #4a5568;">
-                            📧 premium-support@samaboutik.com | 📞 +221 77 000 0001 (Ligne Premium)<br>
-                            <a href="https://samaboutiksn.netlify.app" style="color: #805ad5; text-decoration: none; font-weight: 600;">samaboutiksn.netlify.app</a>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </body>
-        </html>
-      `
-    });
-
-    if (error) {
-      console.error('❌ Erreur Resend premium:', error);
-      return res.status(500).json({ error: error.message });
-    }
-
-    console.log('✅ Email premium envoyé:', data?.id);
-    res.json({ success: true, message: 'Email premium envoyé', data });
-
-  } catch (error) {
-    console.error('💥 Erreur serveur:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// 3. Rappel d'essai gratuit (pendant l'essai)
-app.post('/api/emails/trial-reminder', async (req, res) => {
-  try {
-    const { email, name, daysLeft } = req.body;
+    const templateParams = {
+      to_name: name,
+      to_email: email,
+      days_since_expired: days_since_expired || '1'
+    };
     
-    console.log('⏰ Envoi email rappel essai à:', email, 'jours restants:', daysLeft);
+    const response = await emailjs.send(
+      'service_66g48gh',     // Même Service ID
+      'template_e88d6or',    // ⭐ TON NOUVEAU TEMPLATE ID
+      templateParams
+    );
     
-    const { data, error } = await sendResendEmail({
-      from: 'Sama Boutik <reminder@resend.dev>',
-      to: 'bamba.remun2025@gmail.com', // Mode test
-      subject: `⏳ Plus que ${daysLeft} jour${daysLeft > 1 ? 's' : ''} sur votre essai gratuit Sama Boutik !`,
-      html: `
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <style>
-                body { font-family: 'Segoe UI', system-ui, sans-serif; line-height: 1.6; color: #1a202c; margin: 0; padding: 0; background: #f7fafc; }
-                .container { max-width: 600px; margin: 0 auto; background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 10px 25px rgba(0,0,0,0.05); }
-                .header { background: linear-gradient(135deg, #f6ad55 0%, #ed8936 100%); color: white; padding: 40px 30px; text-align: center; }
-                .logo { font-size: 32px; font-weight: 800; margin-bottom: 10px; }
-                .content { padding: 40px 30px; }
-                .greeting { color: #2d3748; font-size: 26px; margin-bottom: 15px; font-weight: 600; }
-                .main-text { color: #4a5568; font-size: 16px; margin-bottom: 25px; line-height: 1.8; }
-                .warning-box { background: #fffaf0; padding: 25px; border-radius: 10px; margin: 30px 0; border-left: 4px solid #ed8936; }
-                .countdown { background: linear-gradient(135deg, #f6e05e 0%, #d69e2e 100%); color: #744210; padding: 25px; border-radius: 10px; margin: 30px 0; text-align: center; }
-                .features-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin: 25px 0; }
-                .feature { background: #f8fafc; padding: 20px; border-radius: 8px; border: 1px solid #e2e8f0; text-align: center; }
-                .button-primary { display: inline-block; padding: 16px 40px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px; margin: 20px 0; }
-                .faq-section { background: #ebf8ff; padding: 25px; border-radius: 10px; margin: 30px 0; border-left: 4px solid #4299e1; }
-                .footer { border-top: 1px solid #e2e8f0; padding-top: 30px; margin-top: 40px; color: #718096; font-size: 14px; text-align: center; }
-                @media (max-width: 600px) {
-                    .features-grid { grid-template-columns: 1fr; }
-                    .content { padding: 30px 20px; }
-                    .header { padding: 30px 20px; }
-                }
-            </style>
-        </head>
-        <body>
-            <div class="container">
-                <div class="header">
-                    <div class="logo">⏳ SAMA BOUTIK</div>
-                    <h1 style="margin: 10px 0; font-size: 28px;">Votre essai expire bientôt !</h1>
-                </div>
-                <div class="content">
-                    <h2 class="greeting">Bonjour ${name},</h2>
-                    
-                    <p class="main-text">
-                        Nous espérons que vous appréciez votre essai gratuit de Sama Boutik !<br>
-                        Nous avons une importante information à vous communiquer...
-                    </p>
-                    
-                    <div class="warning-box">
-                        <h3 style="color: #c05621; margin-top: 0;">⚠️ IMPORTANT : Votre essai gratuit expire dans ${daysLeft} jour${daysLeft > 1 ? 's' : ''}</h3>
-                        <p style="color: #744210; margin-bottom: 0;">
-                            Après le ${new Date(Date.now() + daysLeft * 24 * 60 * 60 * 1000).toLocaleDateString('fr-FR')}, vous perdrez l'accès à :
-                        </p>
-                    </div>
-                    
-                    <div class="countdown">
-                        <h2 style="margin-top: 0; font-size: 24px;">⏰ COMPTE À REBOURS</h2>
-                        <p style="font-size: 48px; font-weight: 800; margin: 10px 0;">
-                            ${daysLeft} jour${daysLeft > 1 ? 's' : ''}
-                        </p>
-                        <p style="margin-bottom: 0;">
-                            Avant la fin de votre accès gratuit
-                        </p>
-                    </div>
-                    
-                    <div class="features-grid">
-                        <div class="feature">
-                            <div style="font-size: 24px; margin-bottom: 10px;">📦</div>
-                            <div style="font-weight: 600; color: #2d3748;">Création de produits</div>
-                        </div>
-                        <div class="feature">
-                            <div style="font-size: 24px; margin-bottom: 10px;">💰</div>
-                            <div style="font-weight: 600; color: #2d3748;">Ventes en ligne</div>
-                        </div>
-                        <div class="feature">
-                            <div style="font-size: 24px; margin-bottom: 10px;">📊</div>
-                            <div style="font-weight: 600; color: #2d3748;">Analytics avancés</div>
-                        </div>
-                        <div class="feature">
-                            <div style="font-size: 24px; margin-bottom: 10px;">🚀</div>
-                            <div style="font-weight: 600; color: #2d3748;">Boutique personnalisée</div>
-                        </div>
-                    </div>
-                    
-                    <div style="text-align: center;">
-                        <h3 style="color: #2d3748;">Ne perdez pas votre progression !</h3>
-                        <p style="color: #4a5568;">
-                            <strong>${name}</strong>, vous avez investi du temps pour configurer votre boutique.<br>
-                            Continuez à en profiter pour seulement <strong>500 FCFA par jour</strong>.
-                        </p>
-                        <a href="https://samaboutiksn.netlify.app/pricing" class="button-primary">
-                            🚀 PASSER EN PREMIUM MAINTENANT
-                        </a>
-                        <p style="color: #718096; font-size: 14px; margin-top: 10px;">
-                            Garantie satisfait ou remboursé sous 14 jours
-                        </p>
-                    </div>
-                    
-                    <div class="faq-section">
-                        <h3 style="color: #2b6cb0; margin-top: 0;">❓ Questions fréquentes</h3>
-                        <p style="color: #4a5568; margin-bottom: 5px;">
-                            <strong>Q: Que se passe-t-il si je ne fais rien ?</strong><br>
-                            R: Vous perdrez l'accès à votre boutique et vos données seront conservées 30 jours.
-                        </p>
-                        <p style="color: #4a5568; margin-bottom: 5px;">
-                            <strong>Q: Puis-je exporter mes données ?</strong><br>
-                            R: Oui, même après expiration, vous pouvez exporter vos produits et ventes.
-                        </p>
-                        <p style="color: #4a5568; margin-bottom: 0;">
-                            <strong>Q: Puis-je payer plus tard ?</strong><br>
-                            R: Oui, mais vous perdrez l'accès entre-temps. Mieux vaut maintenir l'accès continu.
-                        </p>
-                    </div>
-                    
-                    <div style="text-align: center; margin: 30px 0;">
-                        <p style="color: #4a5568;">
-                            <strong>Besoin d'aide pour décider ?</strong><br>
-                            Répondez à cet email pour une consultation gratuite de 15 minutes.
-                        </p>
-                    </div>
-                    
-                    <div class="footer">
-                        <p><strong>L'équipe Sama Boutik</strong></p>
-                        <p>Nous croyons en votre succès e-commerce ! 💪</p>
-                        <div style="margin-top: 20px; color: #4a5568;">
-                            📧 support@samaboutik.com | 📞 +221 77 000 0000<br>
-                            <a href="https://samaboutiksn.netlify.app" style="color: #667eea; text-decoration: none;">samaboutiksn.netlify.app</a>
-                        </div>
-                    </div>
-                    
-                    <!-- Note test -->
-                    <div style="background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0; border-radius: 5px;">
-                        <p style="margin: 0; color: #856404;">
-                            <strong>📝 Note test :</strong> Cet email était destiné à ${email} (${name})<br>
-                            En production, il sera envoyé directement à l'utilisateur.
-                        </p>
-                    </div>
-                </div>
-            </div>
-        </body>
-        </html>
-      `
-    });
-
-    if (error) {
-      console.error('❌ Erreur Resend reminder:', error);
-      return res.status(500).json({ error: error.message });
-    }
-
-    console.log('✅ Email rappel envoyé:', data?.id);
+    console.log('✅ Email trial-expired envoyé');
     res.json({ 
       success: true, 
-      message: 'Email rappel envoyé en mode test', 
-      data,
-      note: `Rappel de ${daysLeft} jours envoyé à bamba.remun2025@gmail.com`
-    });
-
-  } catch (error) {
-    console.error('💥 Erreur serveur:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// 3. Email après expiration de l'essai (Pourquoi pas Premium ?)
-app.post('/api/emails/trial-expired-followup', async (req, res) => {
-  try {
-    const { email, name, daysSinceExpired } = req.body;
-    
-    console.log('❓ Envoi email followup essai expiré à:', email);
-    
-   const { data, error } = await sendResendEmail({
-      from: 'Sama Boutik <feedback@resend.dev>',
-      to: email,
-      subject: '🤔 Avez-vous rencontré des difficultés avec Sama Boutik ?',
-      html: `
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <style>
-                body { font-family: 'Segoe UI', system-ui, sans-serif; line-height: 1.6; color: #1a202c; margin: 0; padding: 0; background: #f7fafc; }
-                .container { max-width: 600px; margin: 0 auto; background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 10px 25px rgba(0,0,0,0.05); }
-                .header { background: linear-gradient(135deg, #4299e1 0%, #3182ce 100%); color: white; padding: 40px 30px; text-align: center; }
-                .logo { font-size: 32px; font-weight: 800; margin-bottom: 10px; }
-                .content { padding: 40px 30px; }
-                .greeting { color: #2d3748; font-size: 26px; margin-bottom: 15px; font-weight: 600; }
-                .main-text { color: #4a5568; font-size: 16px; margin-bottom: 25px; line-height: 1.8; }
-                .question-box { background: #ebf8ff; padding: 25px; border-radius: 10px; margin: 30px 0; border-left: 4px solid #4299e1; }
-                .reasons-grid { display: grid; grid-template-columns: 1fr; gap: 15px; margin: 25px 0; }
-                .reason { background: #f8fafc; padding: 20px; border-radius: 8px; border: 1px solid #e2e8f0; }
-                .solution-box { background: #f0fff4; padding: 25px; border-radius: 10px; margin: 30px 0; border-left: 4px solid #48bb78; }
-                .offer-box { background: linear-gradient(135deg, #f6e05e 0%, #d69e2e 100%); color: #744210; padding: 25px; border-radius: 10px; margin: 30px 0; text-align: center; }
-                .button-help { display: inline-block; padding: 14px 35px; background: #4299e1; color: white; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px; margin: 10px 5px; }
-                .button-primary { display: inline-block; padding: 14px 35px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px; margin: 10px 5px; }
-                .feedback-section { background: #fffaf0; padding: 25px; border-radius: 10px; margin: 40px 0; border: 2px dashed #d69e2e; }
-                .footer { border-top: 1px solid #e2e8f0; padding-top: 30px; margin-top: 40px; color: #718096; font-size: 14px; text-align: center; }
-                @media (max-width: 600px) {
-                    .content { padding: 30px 20px; }
-                    .header { padding: 30px 20px; }
-                }
-            </style>
-        </head>
-        <body>
-            <div class="container">
-                <div class="header">
-                    <div class="logo">🤔 SAMA BOUTIK</div>
-                    <h1 style="margin: 10px 0; font-size: 28px;">Votre Avis Nous Importe</h1>
-                </div>
-                <div class="content">
-                    <h2 class="greeting">Bonjour ${name},</h2>
-                    
-                    <p class="main-text">
-                        Nous avons remarqué que votre essai gratuit de Sama Boutik a expiré il y a ${daysSinceExpired} jour${daysSinceExpired > 1 ? 's' : ''}.<br>
-                        Nous espérons que vous avez pu découvrir les fonctionnalités de notre plateforme.
-                    </p>
-                    
-                    <div class="question-box">
-                        <h3 style="color: #2b6cb0; margin-top: 0;">❓ Pourriez-vous nous dire pourquoi vous n'avez pas continué avec Sama Boutik ?</h3>
-                        <p style="color: #4a5568; margin-bottom: 0;">
-                            Votre feedback est précieux pour nous améliorer et mieux servir les entrepreneurs comme vous.
-                        </p>
-                    </div>
-                    
-                    <div class="reasons-grid">
-                        <div class="reason">
-                            <strong>💸 Le prix était trop élevé ?</strong>
-                            <p style="color: #718096; margin-top: 8px; margin-bottom: 0; font-size: 14px;">
-                                Nous comprenons. Avez-vous considéré que 15,000 FCFA/mois = 500 FCFA/jour seulement ?
-                            </p>
-                        </div>
-                        <div class="reason">
-                            <strong>🕒 Manque de temps pour configurer ?</strong>
-                            <p style="color: #718096; margin-top: 8px; margin-bottom: 0; font-size: 14px;">
-                                Nous pouvons vous aider à configurer votre boutique gratuitement en 1 heure.
-                            </p>
-                        </div>
-                        <div class="reason">
-                            <strong>🤔 Pas convaincu par les fonctionnalités ?</strong>
-                            <p style="color: #718096; margin-top: 8px; margin-bottom: 0; font-size: 14px;">
-                                Une démo personnalisée pourrait vous montrer comment Sama Boutik peut booster vos ventes.
-                            </p>
-                        </div>
-                        <div class="reason">
-                            <strong>📱 Difficultés techniques ?</strong>
-                            <p style="color: #718096; margin-top: 8px; margin-bottom: 0; font-size: 14px;">
-                                Notre équipe support est là pour résoudre tout problème rapidement.
-                            </p>
-                        </div>
-                    </div>
-                    
-                    <div class="solution-box">
-                        <h3 style="color: #276749; margin-top: 0;">💡 Solutions que nous proposons :</h3>
-                        <ul style="color: #4a5568; padding-left: 20px;">
-                            <li><strong>Assistance gratuite de configuration</strong> (1 heure avec un expert)</li>
-                            <li><strong>Premier mois à 50%</strong> si vous revenez cette semaine</li>
-                            <li><strong>Garantie satisfait ou remboursé</strong> sous 14 jours</li>
-                            <li><strong>Paiement trimestriel</strong> pour réduire l'engagement mensuel</li>
-                        </ul>
-                    </div>
-                    
-                    <div class="offer-box">
-                        <h3 style="margin-top: 0; color: #744210;">🎁 OFFRE SPÉCIALE DE RETOUR</h3>
-                        <p style="margin-bottom: 15px; font-size: 18px; font-weight: 600;">
-                            7,500 FCFA pour le premier mois au lieu de 15,000 FCFA
-                        </p>
-                        <p style="margin-bottom: 0; font-size: 14px;">
-                            Valable seulement 7 jours après réception de cet email
-                        </p>
-                    </div>
-                    
-                    <div style="text-align: center; margin: 30px 0;">
-                        <a href="https://samaboutiksn.netlify.app/pricing?offer=comeback50" class="button-primary">
-                            🎯 PROFITER DE L'OFFRE À 50%
-                        </a>
-                        <a href="https://calendly.com/samaboutik-demo" class="button-help">
-                            📅 DEMANDER UNE DÉMO
-                        </a>
-                    </div>
-                    
-                    <div class="feedback-section">
-                        <h3 style="color: #d69e2e; margin-top: 0;">📣 Votre opinion compte vraiment</h3>
-                        <p style="color: #744210; margin-bottom: 15px;">
-                            Que pouvons-nous améliorer pour vous faire revenir ?
-                        </p>
-                        <p style="color: #4a5568; margin-bottom: 0; font-size: 14px;">
-                            Répondez simplement à cet email avec vos suggestions, questions ou préoccupations.
-                            Notre PDG lit personnellement chaque réponse.
-                        </p>
-                    </div>
-                    
-                    <div style="text-align: center; margin: 40px 0;">
-                        <p style="color: #4a5568; margin-bottom: 20px;">
-                            <strong>Merci d'avoir donné sa chance à Sama Boutik.</strong><br>
-                            Nous espérons vous revoir bientôt parmi nous !
-                        </p>
-                    </div>
-                    
-                    <div class="footer">
-                        <p><strong>Cordialement,</strong></p>
-                        <p>L'équipe Sama Boutik</p>
-                        <div style="margin-top: 20px; color: #4a5568;">
-                            📧 feedback@samaboutik.com | 📞 +221 77 000 0002<br>
-                            <a href="https://samaboutiksn.netlify.app" style="color: #4299e1; text-decoration: none;">samaboutiksn.netlify.app</a>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </body>
-        </html>
-      `
-    });
-
-    if (error) {
-      console.error('❌ Erreur Resend followup:', error);
-      return res.status(500).json({ error: error.message });
-    }
-
-    console.log('✅ Email followup envoyé:', data?.id);
-    res.json({ success: true, message: 'Email followup envoyé', data });
-
-  } catch (error) {
-    console.error('💥 Erreur serveur:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// 4. Route pour tester tous les emails
-app.post('/api/emails/test-all', async (req, res) => {
-  try {
-    const { email, name } = req.body;
-    
-    console.log('🧪 Test de tous les emails pour:', email);
-    
-    const tests = [];
-    
-    // Test 1: Email essai gratuit
-   const test1 = await sendResendEmail({
-      from: 'Sama Boutik <onboarding@resend.dev>',
-      to: email,
-      subject: 'TEST: Email Essai Gratuit',
-      html: '<h1>Test email essai gratuit</h1>'
-    });
-    tests.push({ test: 'essai-gratuit', success: !test1.error });
-    
-    // Test 2: Email premium
-   const test2 = await sendResendEmail({
-      from: 'Sama Boutik <premium@resend.dev>',
-      to: email,
-      subject: 'TEST: Email Premium',
-      html: '<h1>Test email premium</h1>'
-    });
-    tests.push({ test: 'premium', success: !test2.error });
-    
-    res.json({ 
-      success: true, 
-      message: 'Tests envoyés', 
-      tests,
-      nextStep: 'Vérifie ta boîte email pour voir si les tests sont arrivés'
+      message: 'Email d\'expiration envoyé'
     });
     
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('❌ Erreur trial-expired:', error);
+    res.status(500).json({ error: error.text || error.message });
   }
 });
+
+
 
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`Serveur demarre sur le port ${PORT}`);
