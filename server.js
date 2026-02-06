@@ -5437,15 +5437,162 @@ app.post('/api/emails/welcome-trial', async (req, res) => {
       subject: '🆓 Bienvenue sur votre essai gratuit Sama Boutik !',
       html: `
         <!DOCTYPE html>
-        ...ton HTML existant...
-        <!-- AJOUTE CETTE NOTE DANS LE HTML -->
-        <div style="background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0; border-radius: 5px;">
-          <p style="margin: 0; color: #856404;">
-            <strong>📝 Note test :</strong> Cet email était destiné à ${email} (${name})<br>
-            En production, il sera envoyé directement à l'utilisateur.
-          </p>
-        </div>
-        ...suite du HTML...
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <style>
+                body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; line-height: 1.6; color: #1a202c; margin: 0; padding: 0; background: #f7fafc; }
+                .container { max-width: 600px; margin: 0 auto; background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 10px 25px rgba(0,0,0,0.05); }
+                .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 40px 30px; text-align: center; }
+                .logo { font-size: 32px; font-weight: 800; margin-bottom: 10px; letter-spacing: -0.5px; }
+                .tagline { font-size: 18px; opacity: 0.95; font-weight: 300; }
+                .content { padding: 40px 30px; }
+                .greeting { color: #2d3748; font-size: 26px; margin-bottom: 10px; font-weight: 700; }
+                .intro { color: #4a5568; font-size: 16px; margin-bottom: 30px; line-height: 1.8; }
+                .highlight-box { background: linear-gradient(135deg, #f6e05e 0%, #d69e2e 100%); color: #744210; padding: 25px; border-radius: 10px; margin: 30px 0; }
+                .features-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin: 30px 0; }
+                .feature { background: #f8fafc; padding: 20px; border-radius: 8px; border: 1px solid #e2e8f0; transition: transform 0.2s; }
+                .feature:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
+                .feature-icon { font-size: 28px; margin-bottom: 12px; }
+                .feature-title { font-weight: 600; color: #2d3748; margin-bottom: 8px; font-size: 16px; }
+                .feature-desc { color: #718096; font-size: 14px; line-height: 1.5; }
+                .steps { background: #edf2f7; padding: 25px; border-radius: 10px; margin: 30px 0; }
+                .step { display: flex; align-items: flex-start; margin-bottom: 20px; }
+                .step-number { background: #667eea; color: white; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; margin-right: 15px; flex-shrink: 0; }
+                .step-content { flex: 1; }
+                .button-primary { display: inline-block; padding: 16px 40px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px; margin: 20px 0; transition: transform 0.2s, box-shadow 0.2s; box-shadow: 0 4px 6px rgba(102, 126, 234, 0.2); }
+                .button-primary:hover { transform: translateY(-2px); box-shadow: 0 6px 12px rgba(102, 126, 234, 0.3); }
+                .support-box { background: #ebf8ff; border-left: 4px solid #4299e1; padding: 20px; border-radius: 8px; margin: 30px 0; }
+                .footer { border-top: 1px solid #e2e8f0; padding-top: 25px; margin-top: 40px; color: #718096; font-size: 14px; text-align: center; }
+                .contact-info { color: #4a5568; margin-top: 15px; }
+                @media (max-width: 600px) {
+                    .features-grid { grid-template-columns: 1fr; }
+                    .content { padding: 30px 20px; }
+                    .header { padding: 30px 20px; }
+                }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="header">
+                    <div class="logo">🚀 SAMA BOUTIK</div>
+                    <div class="tagline">Votre boutique en ligne professionnelle</div>
+                </div>
+                <div class="content">
+                    <h1 class="greeting">Cher/Chère ${name},</h1>
+                    <p class="intro">
+                        Bienvenue sur Sama Boutik et merci d'avoir activé votre essai gratuit de 14 jours ! 🌟<br>
+                        Nous sommes ravis de vous accompagner dans la découverte de notre plateforme e-commerce conçue spécialement pour les entrepreneurs comme vous.
+                    </p>
+                    
+                    <div class="highlight-box">
+                        <h3 style="margin-top: 0; color: #744210;">🎁 ESSAI GRATUIT DE 14 JOURS ACTIVÉ</h3>
+                        <p style="margin-bottom: 0; font-weight: 500;">Accès complet à toutes les fonctionnalités Premium</p>
+                    </div>
+                    
+                    <p class="intro">Pendant votre essai gratuit, vous avez accès à :</p>
+                    
+                    <div class="features-grid">
+                        <div class="feature">
+                            <div class="feature-icon">✨</div>
+                            <div class="feature-title">Toutes les fonctionnalités Premium</div>
+                            <div class="feature-desc">Testez toutes les options sans restriction</div>
+                        </div>
+                        <div class="feature">
+                            <div class="feature-icon">🌐</div>
+                            <div class="feature-title">Création automatique de site internet</div>
+                            <div class="feature-desc">Votre boutique en ligne prête en minutes</div>
+                        </div>
+                        <div class="feature">
+                            <div class="feature-icon">📦</div>
+                            <div class="feature-title">Création de produits</div>
+                            <div class="feature-desc">Ajoutez et gérez votre catalogue</div>
+                        </div>
+                        <div class="feature">
+                            <div class="feature-icon">📊</div>
+                            <div class="feature-title">Gestion complète de votre inventaire</div>
+                            <div class="feature-desc">Suivez vos stocks en temps réel</div>
+                        </div>
+                        <div class="feature">
+                            <div class="feature-icon">📈</div>
+                            <div class="feature-title">Tableaux de bord analytiques</div>
+                            <div class="feature-desc">Visualisez vos performances</div>
+                        </div>
+                        <div class="feature">
+                            <div class="feature-icon">👨‍💻</div>
+                            <div class="feature-title">Support technique inclus</div>
+                            <div class="feature-desc">Notre équipe vous assiste</div>
+                        </div>
+                    </div>
+                    
+                    <div class="steps">
+                        <h3 style="margin-top: 0; color: #2d3748;">Pour tirer le meilleur parti de votre essai :</h3>
+                        <div class="step">
+                            <div class="step-number">1</div>
+                            <div class="step-content">
+                                <strong>Importez vos premiers produits</strong>
+                                <p style="color: #718096; margin-top: 5px; font-size: 14px;">Ajoutez jusqu'à 5 produits gratuitement</p>
+                            </div>
+                        </div>
+                        <div class="step">
+                            <div class="step-number">2</div>
+                            <div class="step-content">
+                                <strong>Personnalisez votre boutique en ligne</strong>
+                                <p style="color: #718096; margin-top: 5px; font-size: 14px;">Choisissez un nom et configurez votre boutique</p>
+                            </div>
+                        </div>
+                        <div class="step">
+                            <div class="step-number">3</div>
+                            <div class="step-content">
+                                <strong>Testez le processus de commande complet</strong>
+                                <p style="color: #718096; margin-top: 5px; font-size: 14px;">Simulez une commande de A à Z</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div style="text-align: center;">
+                        <a href="https://samaboutiksn.netlify.app/dashboard" class="button-primary">
+                            🚀 Commencer Maintenant
+                        </a>
+                    </div>
+                    
+                    <div class="support-box">
+                        <h3 style="margin-top: 0; color: #2b6cb0;">Besoin d'aide ?</h3>
+                        <p style="color: #4a5568; margin-bottom: 15px;">Notre équipe est là pour vous guider ! N'hésitez pas à nous contacter pour :</p>
+                        <ul style="color: #4a5568; padding-left: 20px; margin-bottom: 0;">
+                            <li>Une démonstration personnalisée</li>
+                            <li>Des conseils de configuration</li>
+                            <li>Toute question technique</li>
+                        </ul>
+                        <p style="color: #2b6cb0; margin-top: 15px; font-weight: 600;">L'équipe Sama Boutik</p>
+                    </div>
+                    
+                    <div style="background: #f0fff4; padding: 20px; border-radius: 8px; border-left: 4px solid #48bb78; margin: 30px 0;">
+                        <p style="margin: 0; color: #276749;">
+                            <strong>PS :</strong> N'oubliez pas que vous pouvez passer à l'abonnement Premium à tout moment pour continuer à bénéficier de tous les avantages après votre essai !
+                        </p>
+                    </div>
+                    
+                    <div class="footer">
+                        <p>© 2024 Sama Boutik. Tous droits réservés.</p>
+                        <div class="contact-info">
+                            📧 support@samaboutik.com | 📞 +221 77 000 0000<br>
+                            <a href="https://samaboutiksn.netlify.app" style="color: #667eea; text-decoration: none;">samaboutiksn.netlify.app</a>
+                        </div>
+                    </div>
+                    
+                    <!-- Note test seulement en mode développement -->
+                    <div style="background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0; border-radius: 5px;">
+                        <p style="margin: 0; color: #856404;">
+                            <strong>📝 Note test :</strong> Cet email était destiné à ${email} (${name})<br>
+                            En production, il sera envoyé directement à l'utilisateur.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </body>
+        </html>
       `
     });
 
