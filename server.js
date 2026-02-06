@@ -5422,81 +5422,393 @@ app.get('/api/admin/user-stats', requireAdmin, async (req, res) => {
   }
 });
 
-// ==================== 📧 ROUTE EMAILJS - WELCOME TRIAL ====================
-const emailjs = require('emailjs-com');
-emailjs.init('eprizDJCRJQ_JfqbQ'); // Ta clé publique EmailJS
+// ==================== 📧 ROUTES EMAIL BREVO ====================
+const brevo = require('@getbrevo/brevo');
 
-// 1. Email après inscription (Essai gratuit)
+// Configuration Brevo AVEC VOTRE CLÉ
+const BREVO_API_KEY = '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';
+const defaultClient = brevo.ApiClient.instance;
+const apiKey = defaultClient.authentications['api-key'];
+apiKey.apiKey = BREVO_API_KEY;
+const apiInstance = new brevo.TransactionalEmailsApi();
+
+// Helper pour envoyer email
+const sendBrevoEmail = async (toEmail, toName, subject, htmlContent) => {
+  try {
+    const sendSmtpEmail = new brevo.SendSmtpEmail();
+    
+    sendSmtpEmail.subject = subject;
+    sendSmtpEmail.htmlContent = htmlContent;
+    sendSmtpEmail.sender = { 
+      name: "Sama Boutik", 
+      email: "noreply@samaboutik.sn" 
+    };
+    sendSmtpEmail.to = [{ email: toEmail, name: toName }];
+    sendSmtpEmail.replyTo = { email: "samaboutiksen@gmail.com", name: "Support Sama Boutik" };
+    
+    const data = await apiInstance.sendTransacEmail(sendSmtpEmail);
+    console.log('✅ Email Brevo envoyé:', data.messageId);
+    return { success: true, messageId: data.messageId };
+    
+  } catch (error) {
+    console.error('❌ Erreur Brevo:', error.response?.text || error.message);
+    throw error;
+  }
+};
+
+// 1. EMAIL BIENVENUE ESSAI GRATUIT
 app.post('/api/emails/welcome-trial', async (req, res) => {
   try {
-    const { email, name } = req.body;
+    const { email, name, trialDays = 14 } = req.body;
     
-    console.log('📧 [EmailJS PROD] Envoi welcome-trial à:', email);
+    console.log('📧 [EMAIL] Envoi welcome-trial à:', email);
     
-    // Paramètres pour ton template
-    const templateParams = {
-      to_name: name,
-      to_email: email,
-      trial_days: '30'  // Correspond à {{trial_days}} dans ton template
-    };
-    
-    // Envoi via EmailJS avec TON Template ID
-    const response = await emailjs.send(
-      'service_66g48gh',     // Ton Service ID Gmail
-      'template_r88540a',    // ⭐ TON TEMPLATE ID
-      templateParams
+    if (!email || !name) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Email et nom requis' 
+      });
+    }
+
+    const htmlContent = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+        .header { background: #667eea; color: white; padding: 30px; text-align: center; }
+        .content { padding: 30px; background: #f8f9fa; }
+        .button { background: #667eea; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; }
+        .footer { margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <h1>🎉 Bienvenue ${name} !</h1>
+          <p>Votre essai gratuit de ${trialDays} jours est activé</p>
+        </div>
+        
+        <div class="content">
+          <h2>Commencez avec Sama Boutik</h2>
+          
+          <p><strong>Vos avantages :</strong></p>
+          <ul>
+            <li>✅ ${trialDays} jours d'essai gratuit</li>
+            <li>✅ Jusqu'à 5 produits</li>
+            <li>✅ Jusqu'à 5 ventes</li>
+            <li>✅ Boutique publique</li>
+          </ul>
+          
+          <p><strong>Prochaines étapes :</strong></p>
+          <ol>
+            <li>Ajoutez vos produits</li>
+            <li>Configurez votre boutique</li>
+            <li>Partagez votre lien</li>
+          </ol>
+          
+          <a href="https://samaboutiksn.netlify.app/dashboard" class="button">
+            🚀 Accéder à mon tableau de bord
+          </a>
+          
+          <div class="footer">
+            <p>Besoin d'aide ? samaboutiksen@gmail.com</p>
+            <p>© 2024 Sama Boutik</p>
+          </div>
+        </div>
+      </div>
+    </body>
+    </html>
+    `;
+
+    const result = await sendBrevoEmail(
+      email,
+      name,
+      `🎉 Bienvenue sur Sama Boutik - Essai gratuit de ${trialDays} jours`,
+      htmlContent
     );
-    
-    console.log('✅ EmailJS envoyé avec succès');
-    res.json({ 
-      success: true, 
+
+    res.json({
+      success: true,
       message: 'Email de bienvenue envoyé',
-      email_provider: 'EmailJS',
-      template_used: 'welcome-trial'
+      provider: 'Brevo'
     });
-    
+
   } catch (error) {
-    console.error('❌ Erreur EmailJS:', error);
-    res.status(500).json({ 
+    console.error('💥 Erreur email:', error);
+    res.status(500).json({
       success: false,
-      error: 'Erreur envoi email',
-      details: error.text || error.message,
-      provider: 'EmailJS'
+      error: 'Erreur lors de l\'envoi de l\'email'
     });
   }
 });
 
-// 2. EMAIL ESSAI EXPIRÉ (nouvelle route)
+// 2. EMAIL ESSAI EXPIRÉ
 app.post('/api/emails/trial-expired', async (req, res) => {
   try {
-    const { email, name, days_since_expired } = req.body;
+    const { email, name, daysSinceExpired = 0 } = req.body;
     
-    console.log('📧 [EmailJS] Envoi trial-expired à:', email, 'jours:', days_since_expired);
+    console.log('📧 [EMAIL] Envoi trial-expired à:', email);
     
-    const templateParams = {
-      to_name: name,
-      to_email: email,
-      days_since_expired: days_since_expired || '1'
-    };
-    
-    const response = await emailjs.send(
-      'service_66g48gh',     // Même Service ID
-      'template_e88d6or',    // ⭐ TON NOUVEAU TEMPLATE ID
-      templateParams
+    if (!email || !name) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Email et nom requis' 
+      });
+    }
+
+    const htmlContent = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="UTF-8">
+      <style>
+        body { font-family: Arial, sans-serif; }
+        .header { background: #dc2626; color: white; padding: 30px; text-align: center; }
+        .content { padding: 30px; background: #f8f9fa; }
+        .button { background: #667eea; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; }
+      </style>
+    </head>
+    <body>
+      <div style="max-width: 600px; margin: 0 auto;">
+        <div class="header">
+          <h1>⚠️ Votre essai Sama Boutik a expiré</h1>
+        </div>
+        
+        <div class="content">
+          <h2>Bonjour ${name},</h2>
+          <p>Votre essai gratuit a expiré il y a ${daysSinceExpired} jour${daysSinceExpired > 1 ? 's' : ''}.</p>
+          
+          <p><strong>Passez Premium pour :</strong></p>
+          <ul>
+            <li>✅ Produits illimités</li>
+            <li>✅ Ventes illimitées</li>
+            <li>✅ Statistiques avancées</li>
+          </ul>
+          
+          <a href="https://samaboutiksn.netlify.app/pricing" class="button">
+            🔓 PASSER PREMIUM
+          </a>
+          
+          <p style="margin-top: 30px;">Questions ? samaboutiksen@gmail.com</p>
+        </div>
+      </div>
+    </body>
+    </html>
+    `;
+
+    const result = await sendBrevoEmail(
+      email,
+      name,
+      `⏰ Votre essai Sama Boutik a expiré - Réactivez votre boutique`,
+      htmlContent
     );
-    
-    console.log('✅ Email trial-expired envoyé');
-    res.json({ 
-      success: true, 
+
+    res.json({
+      success: true,
       message: 'Email d\'expiration envoyé'
     });
-    
+
   } catch (error) {
-    console.error('❌ Erreur trial-expired:', error);
-    res.status(500).json({ error: error.text || error.message });
+    console.error('💥 Erreur email:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erreur lors de l\'envoi de l\'email'
+    });
   }
 });
 
+// 3. EMAIL BIENVENUE PREMIUM
+app.post('/api/emails/welcome-premium', async (req, res) => {
+  try {
+    const { email, name, months = 1 } = req.body;
+    
+    console.log('📧 [EMAIL] Envoi welcome-premium à:', email);
+    
+    if (!email || !name) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Email et nom requis' 
+      });
+    }
+
+    const htmlContent = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="UTF-8">
+      <style>
+        body { font-family: Arial, sans-serif; }
+        .header { background: #10b981; color: white; padding: 30px; text-align: center; }
+        .content { padding: 30px; background: #f8f9fa; }
+        .button { background: #10b981; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; }
+      </style>
+    </head>
+    <body>
+      <div style="max-width: 600px; margin: 0 auto;">
+        <div class="header">
+          <h1>🏆 FÉLICITATIONS ${name} !</h1>
+          <p>Vous êtes maintenant membre Premium</p>
+        </div>
+        
+        <div class="content">
+          <h2>Bienvenue dans le club Premium !</h2>
+          
+          <p><strong>Vos avantages Premium :</strong></p>
+          <ul>
+            <li>✅ Produits illimités</li>
+            <li>✅ Ventes illimitées</li>
+            <li>✅ Analytics avancés</li>
+            <li>✅ Support prioritaire</li>
+          </ul>
+          
+          <a href="https://samaboutiksn.netlify.app/dashboard" class="button">
+            🚀 ACCÉDER AU DASHBOARD PREMIUM
+          </a>
+          
+          <p style="margin-top: 30px;">Merci pour votre confiance !</p>
+        </div>
+      </div>
+    </body>
+    </html>
+    `;
+
+    const result = await sendBrevoEmail(
+      email,
+      name,
+      `🏆 Félicitations ! Votre compte Premium Sama Boutik est activé`,
+      htmlContent
+    );
+
+    res.json({
+      success: true,
+      message: 'Email Premium envoyé'
+    });
+
+  } catch (error) {
+    console.error('💥 Erreur email:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erreur lors de l\'envoi de l\'email'
+    });
+  }
+});
+
+// 4. EMAIL PREMIUM QUI EXPIRE
+app.post('/api/emails/premium-expiring', async (req, res) => {
+  try {
+    const { email, name, daysLeft = 7 } = req.body;
+    
+    console.log('📧 [EMAIL] Envoi premium-expiring à:', email);
+    
+    if (!email || !name) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Email et nom requis' 
+      });
+    }
+
+    const subject = daysLeft === 1 
+      ? '🚨 DERNIER JOUR - Votre Premium expire demain !' 
+      : `⏰ ${daysLeft} jours restants - Votre Premium expire`;
+
+    const htmlContent = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="UTF-8">
+      <style>
+        body { font-family: Arial, sans-serif; }
+        .header { background: #f59e0b; color: white; padding: 30px; text-align: center; }
+        .content { padding: 30px; background: #f8f9fa; }
+        .button { background: #f59e0b; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; }
+      </style>
+    </head>
+    <body>
+      <div style="max-width: 600px; margin: 0 auto;">
+        <div class="header">
+          <h1>⏰ ${daysLeft} jour${daysLeft > 1 ? 's' : ''} restant${daysLeft > 1 ? 's' : ''}</h1>
+          <p>Votre abonnement Premium expire bientôt</p>
+        </div>
+        
+        <div class="content">
+          <h2>Bonjour ${name},</h2>
+          <p>Votre abonnement Premium expire dans <strong>${daysLeft} jour${daysLeft > 1 ? 's' : ''}</strong>.</p>
+          
+          <p><strong>Renouvelez maintenant pour :</strong></p>
+          <ul>
+            <li>✅ Continuer sans interruption</li>
+            <li>✅ Conserver tous vos avantages</li>
+            <li>✅ Éviter les limites</li>
+          </ul>
+          
+          <a href="https://samaboutiksn.netlify.app/renew" class="button">
+            🔄 RENOUVELER MON ABONNEMENT
+          </a>
+          
+          <p style="margin-top: 30px;">Questions ? samaboutiksen@gmail.com</p>
+        </div>
+      </div>
+    </body>
+    </html>
+    `;
+
+    const result = await sendBrevoEmail(
+      email,
+      name,
+      subject,
+      htmlContent
+    );
+
+    res.json({
+      success: true,
+      message: 'Email d\'expiration Premium envoyé'
+    });
+
+  } catch (error) {
+    console.error('💥 Erreur email:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erreur lors de l\'envoi de l\'email'
+    });
+  }
+});
+
+// 5. EMAIL TEST - Pour vérifier que Brevo fonctionne
+app.post('/api/emails/test', async (req, res) => {
+  try {
+    const { email } = req.body;
+    
+    console.log('🧪 Test email à:', email || 'samaboutiksen@gmail.com');
+    
+    const testEmail = email || 'samaboutiksen@gmail.com';
+    
+    const result = await sendBrevoEmail(
+      testEmail,
+      'Test',
+      '🧪 Test Brevo - Sama Boutik',
+      '<h1>Test réussi !</h1><p>Brevo fonctionne correctement avec Sama Boutik.</p>'
+    );
+
+    res.json({
+      success: true,
+      message: 'Email test envoyé avec succès',
+      test_email: testEmail,
+      brevo_message_id: result.messageId
+    });
+
+  } catch (error) {
+    console.error('💥 Erreur test email:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      details: 'Vérifiez votre clé API Brevo'
+    });
+  }
+});
 
 
 app.listen(PORT, '0.0.0.0', () => {
