@@ -6064,6 +6064,150 @@ app.get('/api/emails/status', (req, res) => {
 console.log('✅ Routes email sécurisées configurées');
 console.log(`📧 Service email: ${BREVO_ENABLED ? 'Brevo ACTIF' : 'SIMULATION (configurez BREVO_API_KEY)'}`);
 
+// COMMANDES AVEC VARIANTS
+app.post('/api/orders/with-variants', async (req, res) => {
+  try {
+    const { 
+      user_id,
+      customer_first_name,
+      customer_last_name,
+      customer_phone,
+      delivery_address,
+      delivery_city,
+      items, // [{product_id, variant_selections: [{type: 'size', value: 'M'}, {type: 'color', value: 'Rouge'}], quantity}]
+      payment_method = 'whatsapp',
+      notes
+    } = req.body;
+    
+    // Vérifier l'abonnement
+    const { data: user } = await supabase
+      .from('users')
+      .select('subscription_type, trial_ends_at, is_premium, shipping_type, shipping_price')
+      .eq('id', user_id)
+      .single();
+    
+    const now = new Date();
+    const canMakeOrder = (
+      (user.subscription_type === 'premium' && user.is_premium === true) ||
+      (user.subscription_type === 'trial' && new Date(user.trial_ends_at) > now)
+    );
+    
+    if (!canMakeOrder) {
+      return res.status(403).json({
+        success: false,
+        error: 'Abonnement expiré. Passez Premium.',
+        trial_expired: true
+      });
+    }
+    
+    // Calculer le total et vérifier les stocks
+    let totalAmount = 0;
+    const orderItems = [];
+    
+    for (const item of items) {
+      const { data: product } = await supabase
+        .from('products')
+        .select('*')
+        .eq('id', item.product_id)
+        .eq('user_id', user_id)
+        .single();
+      
+      if (!product) {
+        return res.status(404).json({ error: `Produit ${item.product_id} non trouvé` });
+      }
+      
+      // Vérifier le stock
+      if (product.stock < item.quantity) {
+        return res.status(400).json({ 
+          error: `Stock insuffisant pour ${product.name}. Restant: ${product.stock}` 
+        });
+      }
+      
+      // Calculer le prix avec les variantes
+      let itemPrice = product.price;
+      let variantDetails = [];
+      
+      if (item.variant_selections && product.variants) {
+        for (const selection of item.variant_selections) {
+          const variant = product.variants.find(v => 
+            v.type === selection.type && v.name === selection.value
+          );
+          
+          if (variant) {
+            itemPrice += (variant.price_adjustment || 0);
+            variantDetails.push({
+              type: selection.type,
+              value: selection.value,
+              price_adjustment: variant.price_adjustment || 0,
+              image_url: variant.image_url || null
+            });
+          }
+        }
+      }
+      
+      const itemTotal = itemPrice * item.quantity;
+      totalAmount += itemTotal;
+      
+      orderItems.push({
+        product_id: item.product_id,
+        product_name: product.name,
+        quantity: item.quantity,
+        unit_price: itemPrice,
+        total_price: itemTotal,
+        variant_selections: variantDetails,
+        purchase_price: product.purchase_price || 0
+      });
+    }
+    
+    // Ajouter les frais de livraison
+    let shippingPrice = 0;
+    if (user.shipping_type === 'fixed') {
+      shippingPrice = user.shipping_price || 0;
+    }
+    
+    const totalWithShipping = totalAmount + shippingPrice;
+    
+    // Créer la commande
+    const { data: order, error: orderError } = await supabase
+      .from('online_orders')
+      .insert([{
+        user_id,
+        customer_first_name,
+        customer_last_name,
+        customer_phone,
+        customer_whatsapp: customer_phone,
+        delivery_address,
+        delivery_city,
+        payment_method,
+        payment_status: 'pending',
+        total_amount: totalWithShipping,
+        shipping_price: shippingPrice,
+        shipping_type: user.shipping_type || 'free',
+        items: orderItems,
+        notes: notes || '',
+        status: 'pending',
+        has_variants: orderItems.some(item => item.variant_selections?.length > 0)
+      }])
+      .select();
+    
+    if (orderError) throw orderError;
+    
+    res.json({
+      success: true,
+      order: order[0],
+      summary: {
+        items_total: totalAmount,
+        shipping: shippingPrice,
+        total: totalWithShipping,
+        item_count: items.length
+      }
+    });
+    
+  } catch (error) {
+    console.error('💥 Erreur commande variantes:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
 
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`Serveur demarre sur le port ${PORT}`);
