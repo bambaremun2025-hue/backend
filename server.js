@@ -5427,6 +5427,7 @@ let brevo;
 let BREVO_ENABLED = false;
 let apiInstance;
 
+
 try {
   brevo = require('@getbrevo/brevo');
   console.log('✅ Package Brevo chargé');
@@ -5444,6 +5445,7 @@ try {
   console.warn('⚠️ Brevo non disponible:', error.message);
 }
 
+const sendEmail = async (toEmail, toName, subject, htmlContent, emailType = 'general') => {
   try {
     console.log(`📧 [${emailType}] Préparation pour ${toName} <${toEmail}>`);
     
