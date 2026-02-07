@@ -7,7 +7,7 @@
     "dev": "nodemon server.js"
   },
   "dependencies": {
-    "@getbrevo/brevo": "^8.2.0",  # <-- CHANGÉ DE 3.0.1 À 8.2.0
+    "@getbrevo/brevo": "^8.2.0",
     "@supabase/supabase-js": "^2.39.0",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
