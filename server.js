@@ -5444,7 +5444,6 @@ try {
   console.warn('⚠️ Brevo non disponible:', error.message);
 }
 
-const sendEmail = async (toEmail, toName, subject, htmlContent, emailType = 'general') => {
   try {
     console.log(`📧 [${emailType}] Préparation pour ${toName} <${toEmail}>`);
     
