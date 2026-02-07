@@ -5473,7 +5473,6 @@ const sendEmail = async (toEmail, toName, subject, htmlContent, emailType = 'gen
 };
 // ==================== 📧 SERVICE EMAIL BREVO (SÉCURISÉ) ====================
 
-let brevo;
 let BREVO_ENABLED = false;
 let apiInstance;
 
