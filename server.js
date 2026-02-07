@@ -5474,7 +5474,6 @@ const sendEmail = async (toEmail, toName, subject, htmlContent, emailType = 'gen
 // ==================== 📧 SERVICE EMAIL BREVO (SÉCURISÉ) ====================
 
 let BREVO_ENABLED = false;
-let apiInstance;
 
 try {
   brevo = require('@getbrevo/brevo');
