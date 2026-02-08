@@ -5644,47 +5644,29 @@ app.get('/api/v2/public/product/:product_id', async (req, res) => {
   try {
     const { product_id } = req.params;
     
-    console.log('🛍️ [V2] Chargement produit public:', product_id);
+    console.log('🛍️ [V2 SIMPLE] Chargement produit:', product_id);
     
-    // CORRECTION : Enlève la condition .eq('active', true) temporairement
-    const { data: product, error } = await supabase
+    // 1. Récupère le produit
+    const { data: product, error: productError } = await supabase
       .from('products')
-      .select(`
-        *,
-        users (
-          shop_name,
-          shipping_type,
-          shipping_price
-        )
-      `)
+      .select('*')
       .eq('id', product_id)
-      // .eq('active', true)  // COMMENTE CETTE LIGNE POUR DEBUG
       .single();
     
-    console.log('🔍 [V2] Résultat Supabase:', {
-      found: !!product,
-      error: error?.message,
-      product_id
-    });
-    
-    if (error || !product) {
-      console.log('❌ [V2] Produit non trouvé dans Supabase');
+    if (productError || !product) {
+      console.log('❌ [V2] Produit non trouvé:', productError?.message);
       return res.status(404).json({ 
         success: false,
-        error: 'Produit non trouvé dans la base de données',
-        debug: { product_id, error: error?.message }
+        error: 'Produit non trouvé'
       });
     }
     
-    // Vérifier si le produit est actif
-    if (!product.active && product.status !== 'active') {
-      console.log('⚠️ [V2] Produit inactif:', product_id);
-      return res.status(404).json({
-        success: false,
-        error: 'Produit non disponible',
-        product_inactive: true
-      });
-    }
+    // 2. Récupère les infos boutique séparément
+    const { data: user, error: userError } = await supabase
+      .from('users')
+      .select('shop_name, shipping_type, shipping_price')
+      .eq('id', product.user_id)
+      .single();
     
     // Formater la réponse
     const formattedProduct = {
@@ -5699,19 +5681,14 @@ app.get('/api/v2/public/product/:product_id', async (req, res) => {
       main_image: product.main_image_url || product.image_url,
       image_gallery: product.image_gallery || [],
       shop_info: {
-        shop_name: product.users?.shop_name || 'Boutique',
+        shop_name: user?.shop_name || 'Boutique',
         user_id: product.user_id,
-        shipping_type: product.users?.shipping_type || 'free',
-        shipping_price: product.users?.shipping_price || 0
-      },
-      metadata: {
-        active: product.active,
-        status: product.status,
-        created_at: product.created_at
+        shipping_type: user?.shipping_type || 'free',
+        shipping_price: user?.shipping_price || 0
       }
     };
     
-    console.log('✅ [V2] Produit formaté:', formattedProduct.id);
+    console.log('✅ [V2] Produit trouvé:', product.name);
     
     res.json({
       success: true,
@@ -5719,10 +5696,10 @@ app.get('/api/v2/public/product/:product_id', async (req, res) => {
     });
     
   } catch (error) {
-    console.error('💥 [V2] Erreur serveur:', error);
+    console.error('💥 [V2] Erreur:', error);
     res.status(500).json({ 
-      error: error.message,
-      debug: 'Erreur interne du serveur'
+      success: false,
+      error: 'Erreur serveur'
     });
   }
 });
