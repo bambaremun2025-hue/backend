@@ -5567,6 +5567,131 @@ app.post('/api/orders/with-variants', async (req, res) => {
   }
 });
 
+app.post('/api/v2/products', requireAuth, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    
+    const { 
+      name, 
+      description, 
+      price,
+      category,
+      variants = [],
+      main_image_url,
+      image_gallery = [],
+      stock = 0
+    } = req.body;
+    
+    console.log('🆕 Création produit V2 pour user:', userId);
+    
+    // Vérifier la limite
+    const { count: productCount } = await supabase
+      .from('products')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', userId);
+    
+    const { data: user } = await supabase
+      .from('users')
+      .select('max_products, subscription_type')
+      .eq('id', userId)
+      .single();
+    
+    const maxProducts = user.subscription_type === 'premium' ? 99999 : (user.max_products || 5);
+    
+    if (productCount >= maxProducts) {
+      return res.status(403).json({
+        success: false,
+        error: 'Limite produits atteinte',
+        limit_reached: true
+      });
+    }
+    
+    // Créer le produit
+    const { data: product, error } = await supabase
+      .from('products')
+      .insert([{
+        user_id: userId,
+        name,
+        description: description || '',
+        price: price || 0,
+        category: category || '',
+        variants: variants.length > 0 ? variants : null,
+        main_image_url: main_image_url || null,
+        image_gallery: image_gallery.length > 0 ? image_gallery : null,
+        stock: stock || 0,
+        has_variants: variants.length > 0,
+        status: 'active',
+        created_at: new Date().toISOString()
+      }])
+      .select();
+    
+    if (error) throw error;
+    
+    res.json({
+      success: true,
+      product: product[0],
+      has_variants: variants.length > 0,
+      message: 'Produit créé avec variantes'
+    });
+    
+  } catch (error) {
+    console.error('💥 Erreur création produit V2:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// AJOUTE CE CODE AUSSI
+app.get('/api/v2/public/product/:product_id', async (req, res) => {
+  try {
+    const { product_id } = req.params;
+    
+    console.log('🛍️ Page produit publique V2:', product_id);
+    
+    const { data: product, error } = await supabase
+      .from('products')
+      .select('*, users(shop_name, shipping_type, shipping_price)')
+      .eq('id', product_id)
+      .eq('active', true)
+      .single();
+    
+    if (error || !product) {
+      return res.status(404).json({ 
+        success: false,
+        error: 'Produit non trouvé' 
+      });
+    }
+    
+    // Formater simplement
+    const formattedProduct = {
+      id: product.id,
+      name: product.name,
+      description: product.description || 'Découvrez ce produit',
+      price: product.price,
+      base_price: product.price,
+      stock: product.stock || 0,
+      has_variants: product.has_variants || false,
+      variants: product.variants || [],
+      main_image: product.main_image_url || product.image_url,
+      image_gallery: product.image_gallery || [],
+      shop_info: {
+        shop_name: product.users?.shop_name || 'Boutique',
+        user_id: product.user_id,
+        shipping_type: product.users?.shipping_type || 'free',
+        shipping_price: product.users?.shipping_price || 0
+      }
+    };
+    
+    res.json({
+      success: true,
+      product: formattedProduct
+    });
+    
+  } catch (error) {
+    console.error('💥 Erreur produit V2:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`Serveur demarre sur le port ${PORT}`);
 });
