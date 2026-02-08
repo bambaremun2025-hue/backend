@@ -5704,6 +5704,138 @@ app.get('/api/v2/public/product/:product_id', async (req, res) => {
   }
 });
 
+// ==================== 📱 CONFIGURATION WHATSAPP ====================
+
+const WHATSAPP_CONFIG = {
+  // Méthode 1: CallMeBot (gratuit, simple)
+  CALLMEBOT_API_KEY: process.env.CALLMEBOT_API_KEY || 'VOTRE_CLE_API',
+  
+  // Méthode 2: WhatsApp Cloud API (plus professionnel)
+  WHATSAPP_API_URL: 'https://graph.facebook.com/v17.0',
+  WHATSAPP_PHONE_NUMBER_ID: process.env.WHATSAPP_PHONE_NUMBER_ID,
+  WHATSAPP_ACCESS_TOKEN: process.env.WHATSAPP_ACCESS_TOKEN,
+  
+  // Votre numéro d'envoi
+  SENDER_PHONE: '+221710526169'
+};
+
+// ==================== 🕒 TÂCHE PLANIFIÉE ====================
+
+async function checkAndSendSevenDayNotifications() {
+  try {
+    console.log('🔄 Vérification des utilisateurs à 7 jours...');
+    
+    // Calculer la date il y a 7 jours (précisément)
+    const now = new Date();
+    const sevenDaysAgo = new Date(now);
+    sevenDaysAgo.setDate(now.getDate() - 7);
+    
+    // Format pour la requête
+    const startDate = new Date(sevenDaysAgo);
+    startDate.setHours(0, 0, 0, 0);
+    
+    const endDate = new Date(sevenDaysAgo);
+    endDate.setHours(23, 59, 59, 999);
+    
+    console.log('📅 Recherche utilisateurs créés entre:', 
+                startDate.toISOString(), 'et', endDate.toISOString());
+
+    // 1. Trouver les utilisateurs créés il y a 7 jours
+    const { data: users, error } = await supabase
+      .from('users')
+      .select('id, email, full_name, phone, created_at, shop_name')
+      .gte('created_at', startDate.toISOString())
+      .lte('created_at', endDate.toISOString())
+      .eq('subscription_type', 'trial')
+      .is('seven_day_notification_sent', null)
+      .not('phone', 'is', null);
+
+    if (error) {
+      console.error('❌ Erreur recherche utilisateurs:', error);
+      return;
+    }
+
+    console.log(`🔍 ${users?.length || 0} utilisateurs trouvés pour notification`);
+
+    // 2. Envoyer les notifications
+    for (const user of users || []) {
+      if (!user.phone) continue;
+      
+      try {
+        console.log(`📱 Envoi à ${user.full_name || user.email} (${user.phone})`);
+        
+        // Message personnalisé
+        const message = `
+Salam ${user.full_name || user.shop_name || ''},
+
+Je te contacte suite à ton essai gratuit sur Sama Boutik. 
+J'aurais besoin d'un retour d'expérience pour améliorer la qualité du service. 
+
+❓ Quels sont les points qui ne t'ont pas satisfait ?
+❓ Qu'est-ce qui t'empêche de passer en premium ?
+❓ Quel type de fonctionnalités pourraient grandement t'aider dans ton commerce ?
+
+Tes réponses seront grandement appréciées et nous permettront de mieux répondre aux attentes des clients.
+
+🎁 Tu bénéficieras de -50% sur l'abonnement premium si tu nous donnes ton retour d'expérience !
+
+Merci beaucoup,
+L'équipe Sama Boutik
+        `.trim();
+
+        // Méthode 1: Envoi via CallMeBot (simple)
+        const formattedPhone = user.phone.replace(/\D/g, '');
+        if (formattedPhone.startsWith('221') || formattedPhone.startsWith('+221')) {
+          const cleanPhone = formattedPhone.replace(/^\+?221?/, '');
+          
+          const whatsappUrl = `https://api.callmebot.com/whatsapp.php?phone=+221${cleanPhone}&text=${encodeURIComponent(message)}&apikey=${WHATSAPP_CONFIG.CALLMEBOT_API_KEY}`;
+          
+          const response = await fetch(whatsappUrl, { 
+            method: 'GET',
+            timeout: 10000 
+          });
+          
+          if (response.ok) {
+            console.log(`✅ WhatsApp envoyé à ${user.phone}`);
+            
+            // Marquer comme envoyé dans la base
+            await supabase
+              .from('users')
+              .update({ 
+                seven_day_notification_sent: true,
+                notification_sent_at: new Date().toISOString()
+              })
+              .eq('id', user.id);
+          } else {
+            console.error(`❌ Échec envoi à ${user.phone}`);
+          }
+        }
+        
+      } catch (userError) {
+        console.error(`💥 Erreur pour ${user.email}:`, userError.message);
+      }
+      
+      // Attendre 1 seconde entre chaque envoi pour éviter le spam
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+    
+    console.log('✅ Vérification 7 jours terminée');
+    
+  } catch (error) {
+    console.error('💥 Erreur tâche planifiée:', error);
+  }
+}
+
+// ==================== ⏰ DÉMARRER LE SCHEDULER ====================
+
+// Démarrer la vérification toutes les heures
+setInterval(checkAndSendSevenDayNotifications, 60 * 60 * 1000); // Toutes les heures
+
+// Démarrer immédiatement au lancement
+setTimeout(checkAndSendSevenDayNotifications, 10000); // Démarrer après 10 secondes
+
+console.log('⏰ Scheduler 7 jours activé');
+
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`Serveur demarre sur le port ${PORT}`);
 });
