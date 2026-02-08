@@ -5919,6 +5919,93 @@ setTimeout(checkAndSendSevenDayNotifications, 30000);
 console.log('⏰ Système WhatsApp 7-jours activé !');
 console.log(`⏳ Prochaine exécution dans 30 secondes, puis toutes les 6 heures`);
 
+// ==================== 🧪 ROUTES API WHATSAPP ====================
+
+// Test WhatsApp manuel
+app.post('/api/whatsapp/test-send', async (req, res) => {
+  try {
+    const { phone, message } = req.body;
+    
+    if (!phone) {
+      return res.status(400).json({ error: 'Numéro requis' });
+    }
+    
+    const testMessage = message || "Test Sama Boutik - système WhatsApp automatisé";
+    const result = await sendWhatsAppMessage(phone, testMessage);
+    
+    res.json({
+      success: result,
+      message: result ? 'Message envoyé avec succès' : 'Échec envoi',
+      phone: phone
+    });
+    
+  } catch (error) {
+    console.error('💥 Erreur route test:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Voir les utilisateurs éligibles
+app.get('/api/whatsapp/eligible-users', async (req, res) => {
+  try {
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    
+    const startOfDay = new Date(sevenDaysAgo);
+    startOfDay.setHours(0, 0, 0, 0);
+    
+    const { data: users, error } = await supabase
+      .from('users')
+      .select('id, email, full_name, phone, created_at, subscription_type, seven_day_notification_sent')
+      .gte('created_at', startOfDay.toISOString())
+      .lte('created_at', new Date(sevenDaysAgo.setHours(23, 59, 59, 999)).toISOString())
+      .order('created_at', { ascending: false });
+    
+    if (error) throw error;
+    
+    res.json({
+      count: users?.length || 0,
+      users: users || [],
+      date_range: {
+        seven_days_ago: sevenDaysAgo.toISOString(),
+        start: startOfDay.toISOString(),
+        end: new Date(sevenDaysAgo.setHours(23, 59, 59, 999)).toISOString()
+      }
+    });
+    
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Forcer l'exécution du scheduler
+app.post('/api/whatsapp/test-7day', async (req, res) => {
+  try {
+    console.log('🔄 Exécution manuelle du scheduler 7 jours');
+    await checkAndSendSevenDayNotifications();
+    
+    res.json({ 
+      success: true, 
+      message: 'Scheduler exécuté manuellement',
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Vérification simple
+app.get('/api/whatsapp/check', (req, res) => {
+  res.json({
+    status: 'OK',
+    message: 'API WhatsApp disponible',
+    config: {
+      api_key: CALLMEBOT_CONFIG.API_KEY,
+      sender_phone: CALLMEBOT_CONFIG.SENDER_PHONE
+    }
+  });
+});
+
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`Serveur demarre sur le port ${PORT}`);
 });
