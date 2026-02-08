@@ -5704,69 +5704,107 @@ app.get('/api/v2/public/product/:product_id', async (req, res) => {
   }
 });
 
-// ==================== 📱 CONFIGURATION WHATSAPP ====================
+// ==================== 📱 CONFIGURATION WHATSAPP CALLMEBOT ====================
 
-const WHATSAPP_CONFIG = {
-  // Méthode 1: CallMeBot (gratuit, simple)
-  CALLMEBOT_API_KEY: process.env.CALLMEBOT_API_KEY || 'VOTRE_CLE_API',
-  
-  // Méthode 2: WhatsApp Cloud API (plus professionnel)
-  WHATSAPP_API_URL: 'https://graph.facebook.com/v17.0',
-  WHATSAPP_PHONE_NUMBER_ID: process.env.WHATSAPP_PHONE_NUMBER_ID,
-  WHATSAPP_ACCESS_TOKEN: process.env.WHATSAPP_ACCESS_TOKEN,
-  
-  // Votre numéro d'envoi
-  SENDER_PHONE: '+221710526169'
+const CALLMEBOT_CONFIG = {
+  API_KEY: '4367312', // VOTRE CLÉ API
+  SENDER_PHONE: '221710526169' // VOTRE NUMÉRO
 };
 
-// ==================== 🕒 TÂCHE PLANIFIÉE ====================
+// ==================== 🕒 FONCTION D'ENVOI WHATSAPP ====================
+
+async function sendWhatsAppMessage(phone, message) {
+  try {
+    // Nettoyer le numéro
+    const cleanPhone = phone.replace(/\D/g, '');
+    
+    // S'assurer que c'est un numéro sénégalais
+    let senegalPhone;
+    if (cleanPhone.startsWith('221')) {
+      senegalPhone = cleanPhone;
+    } else if (cleanPhone.startsWith('00221')) {
+      senegalPhone = cleanPhone.substring(2);
+    } else if (cleanPhone.length === 9) {
+      senegalPhone = '221' + cleanPhone;
+    } else {
+      console.log(`❌ Numéro invalide: ${phone}`);
+      return false;
+    }
+    
+    // URL d'API CallMeBot
+    const encodedMessage = encodeURIComponent(message);
+    const apiUrl = `https://api.callmebot.com/whatsapp.php?phone=${senegalPhone}&text=${encodedMessage}&apikey=${CALLMEBOT_CONFIG.API_KEY}`;
+    
+    console.log(`📱 Envoi WhatsApp à: ${senegalPhone}`);
+    
+    // Envoyer la requête
+    const response = await fetch(apiUrl, { 
+      method: 'GET',
+      timeout: 30000 // 30 secondes timeout
+    });
+    
+    if (response.ok) {
+      console.log(`✅ WhatsApp envoyé avec succès à ${senegalPhone}`);
+      return true;
+    } else {
+      console.error(`❌ Échec envoi WhatsApp à ${senegalPhone}:`, response.status);
+      return false;
+    }
+    
+  } catch (error) {
+    console.error(`💥 Erreur envoi WhatsApp:`, error.message);
+    return false;
+  }
+}
+
+// ==================== 🕒 TÂCHE PLANIFIÉE 7 JOURS ====================
 
 async function checkAndSendSevenDayNotifications() {
   try {
-    console.log('🔄 Vérification des utilisateurs à 7 jours...');
+    console.log('🔄 [SCHEDULER] Vérification des utilisateurs à 7 jours...');
     
-    // Calculer la date il y a 7 jours (précisément)
+    // Calculer la période exacte des 7 jours
     const now = new Date();
     const sevenDaysAgo = new Date(now);
     sevenDaysAgo.setDate(now.getDate() - 7);
     
-    // Format pour la requête
-    const startDate = new Date(sevenDaysAgo);
-    startDate.setHours(0, 0, 0, 0);
+    // Créer une fenêtre de 24h pour les 7 jours
+    const startOfDay = new Date(sevenDaysAgo);
+    startOfDay.setHours(0, 0, 0, 0);
     
-    const endDate = new Date(sevenDaysAgo);
-    endDate.setHours(23, 59, 59, 999);
+    const endOfDay = new Date(sevenDaysAgo);
+    endOfDay.setHours(23, 59, 59, 999);
     
-    console.log('📅 Recherche utilisateurs créés entre:', 
-                startDate.toISOString(), 'et', endDate.toISOString());
+    console.log(`📅 Recherche utilisateurs entre: ${startOfDay.toISOString()} et ${endOfDay.toISOString()}`);
 
-    // 1. Trouver les utilisateurs créés il y a 7 jours
+    // Rechercher les utilisateurs
     const { data: users, error } = await supabase
       .from('users')
-      .select('id, email, full_name, phone, created_at, shop_name')
-      .gte('created_at', startDate.toISOString())
-      .lte('created_at', endDate.toISOString())
-      .eq('subscription_type', 'trial')
+      .select('id, email, full_name, phone, created_at, shop_name, subscription_type')
+      .gte('created_at', startOfDay.toISOString())
+      .lte('created_at', endOfDay.toISOString())
+      .or('subscription_type.eq.trial,subscription_type.is.null')
       .is('seven_day_notification_sent', null)
-      .not('phone', 'is', null);
+      .not('phone', 'is', null)
+      .not('phone', 'eq', '');
 
     if (error) {
-      console.error('❌ Erreur recherche utilisateurs:', error);
+      console.error('❌ Erreur Supabase:', error);
       return;
     }
 
     console.log(`🔍 ${users?.length || 0} utilisateurs trouvés pour notification`);
 
-    // 2. Envoyer les notifications
+    let successCount = 0;
+    let failCount = 0;
+
+    // Envoyer les messages
     for (const user of users || []) {
-      if (!user.phone) continue;
+      console.log(`\n📋 Traitement: ${user.full_name || user.email} (${user.phone})`);
       
-      try {
-        console.log(`📱 Envoi à ${user.full_name || user.email} (${user.phone})`);
-        
-        // Message personnalisé
-        const message = `
-Salam ${user.full_name || user.shop_name || ''},
+      // Message personnalisé
+      const message = `
+Salam ${user.full_name || user.shop_name || 'cher client'},
 
 Je te contacte suite à ton essai gratuit sur Sama Boutik. 
 J'aurais besoin d'un retour d'expérience pour améliorer la qualité du service. 
@@ -5781,60 +5819,105 @@ Tes réponses seront grandement appréciées et nous permettront de mieux répon
 
 Merci beaucoup,
 L'équipe Sama Boutik
-        `.trim();
+      `.trim();
 
-        // Méthode 1: Envoi via CallMeBot (simple)
-        const formattedPhone = user.phone.replace(/\D/g, '');
-        if (formattedPhone.startsWith('221') || formattedPhone.startsWith('+221')) {
-          const cleanPhone = formattedPhone.replace(/^\+?221?/, '');
-          
-          const whatsappUrl = `https://api.callmebot.com/whatsapp.php?phone=+221${cleanPhone}&text=${encodeURIComponent(message)}&apikey=${WHATSAPP_CONFIG.CALLMEBOT_API_KEY}`;
-          
-          const response = await fetch(whatsappUrl, { 
-            method: 'GET',
-            timeout: 10000 
-          });
-          
-          if (response.ok) {
-            console.log(`✅ WhatsApp envoyé à ${user.phone}`);
-            
-            // Marquer comme envoyé dans la base
-            await supabase
-              .from('users')
-              .update({ 
-                seven_day_notification_sent: true,
-                notification_sent_at: new Date().toISOString()
-              })
-              .eq('id', user.id);
-          } else {
-            console.error(`❌ Échec envoi à ${user.phone}`);
-          }
-        }
+      // Envoyer le message WhatsApp
+      const sent = await sendWhatsAppMessage(user.phone, message);
+      
+      if (sent) {
+        // Marquer comme envoyé dans la base
+        await supabase
+          .from('users')
+          .update({ 
+            seven_day_notification_sent: true,
+            notification_sent_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', user.id);
         
-      } catch (userError) {
-        console.error(`💥 Erreur pour ${user.email}:`, userError.message);
+        successCount++;
+        
+        // Log dans une table de logs
+        await supabase
+          .from('whatsapp_logs')
+          .insert([{
+            user_id: user.id,
+            phone: user.phone,
+            message_type: '7_day_followup',
+            status: 'sent',
+            sent_at: new Date().toISOString()
+          }]);
+        
+      } else {
+        failCount++;
+        
+        await supabase
+          .from('whatsapp_logs')
+          .insert([{
+            user_id: user.id,
+            phone: user.phone,
+            message_type: '7_day_followup',
+            status: 'failed',
+            error: 'Échec envoi',
+            sent_at: new Date().toISOString()
+          }]);
       }
       
-      // Attendre 1 seconde entre chaque envoi pour éviter le spam
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Pause de 2 secondes entre chaque envoi pour éviter le spam
+      await new Promise(resolve => setTimeout(resolve, 2000));
     }
     
+    console.log(`\n📊 RÉSUMÉ: ${successCount} envoyés, ${failCount} échecs`);
     console.log('✅ Vérification 7 jours terminée');
     
   } catch (error) {
-    console.error('💥 Erreur tâche planifiée:', error);
+    console.error('💥 Erreur critique dans le scheduler:', error);
   }
 }
 
-// ==================== ⏰ DÉMARRER LE SCHEDULER ====================
+// ==================== 📝 CRÉER LA TABLE DE LOGS ====================
 
-// Démarrer la vérification toutes les heures
-setInterval(checkAndSendSevenDayNotifications, 60 * 60 * 1000); // Toutes les heures
+async function createWhatsAppLogsTable() {
+  try {
+    // Cette table permettra de suivre tous les envois
+    const createTableSQL = `
+      CREATE TABLE IF NOT EXISTS whatsapp_logs (
+        id BIGSERIAL PRIMARY KEY,
+        user_id UUID REFERENCES users(id),
+        phone VARCHAR(20),
+        message_type VARCHAR(50),
+        message_text TEXT,
+        status VARCHAR(20),
+        error TEXT,
+        sent_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+      );
+      
+      CREATE INDEX IF NOT EXISTS idx_whatsapp_logs_user_id ON whatsapp_logs(user_id);
+      CREATE INDEX IF NOT EXISTS idx_whatsapp_logs_sent_at ON whatsapp_logs(sent_at);
+    `;
+    
+    console.log('📋 Vérification table whatsapp_logs...');
+    
+  } catch (error) {
+    console.log('ℹ️ Table logs déjà existante ou erreur:', error.message);
+  }
+}
 
-// Démarrer immédiatement au lancement
-setTimeout(checkAndSendSevenDayNotifications, 10000); // Démarrer après 10 secondes
+// ==================== ⏰ DÉMARRER LE SYSTÈME ====================
 
-console.log('⏰ Scheduler 7 jours activé');
+// Créer la table de logs au démarrage
+setTimeout(createWhatsAppLogsTable, 5000);
+
+// Démarrer le scheduler toutes les 6 heures
+const SCHEDULE_INTERVAL = 6 * 60 * 60 * 1000; // 6 heures
+setInterval(checkAndSendSevenDayNotifications, SCHEDULE_INTERVAL);
+
+// Premier lancement après 30 secondes
+setTimeout(checkAndSendSevenDayNotifications, 30000);
+
+console.log('⏰ Système WhatsApp 7-jours activé !');
+console.log(`⏳ Prochaine exécution dans 30 secondes, puis toutes les 6 heures`);
 
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`Serveur demarre sur le port ${PORT}`);
