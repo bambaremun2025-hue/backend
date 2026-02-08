@@ -5640,28 +5640,53 @@ app.post('/api/v2/products', requireAuth, async (req, res) => {
   }
 });
 
-// AJOUTE CE CODE AUSSI
 app.get('/api/v2/public/product/:product_id', async (req, res) => {
   try {
     const { product_id } = req.params;
     
-    console.log('🛍️ Page produit publique V2:', product_id);
+    console.log('🛍️ [V2] Chargement produit public:', product_id);
     
+    // CORRECTION : Enlève la condition .eq('active', true) temporairement
     const { data: product, error } = await supabase
       .from('products')
-      .select('*, users(shop_name, shipping_type, shipping_price)')
+      .select(`
+        *,
+        users (
+          shop_name,
+          shipping_type,
+          shipping_price
+        )
+      `)
       .eq('id', product_id)
-      .eq('active', true)
+      // .eq('active', true)  // COMMENTE CETTE LIGNE POUR DEBUG
       .single();
     
+    console.log('🔍 [V2] Résultat Supabase:', {
+      found: !!product,
+      error: error?.message,
+      product_id
+    });
+    
     if (error || !product) {
+      console.log('❌ [V2] Produit non trouvé dans Supabase');
       return res.status(404).json({ 
         success: false,
-        error: 'Produit non trouvé' 
+        error: 'Produit non trouvé dans la base de données',
+        debug: { product_id, error: error?.message }
       });
     }
     
-    // Formater simplement
+    // Vérifier si le produit est actif
+    if (!product.active && product.status !== 'active') {
+      console.log('⚠️ [V2] Produit inactif:', product_id);
+      return res.status(404).json({
+        success: false,
+        error: 'Produit non disponible',
+        product_inactive: true
+      });
+    }
+    
+    // Formater la réponse
     const formattedProduct = {
       id: product.id,
       name: product.name,
@@ -5678,8 +5703,15 @@ app.get('/api/v2/public/product/:product_id', async (req, res) => {
         user_id: product.user_id,
         shipping_type: product.users?.shipping_type || 'free',
         shipping_price: product.users?.shipping_price || 0
+      },
+      metadata: {
+        active: product.active,
+        status: product.status,
+        created_at: product.created_at
       }
     };
+    
+    console.log('✅ [V2] Produit formaté:', formattedProduct.id);
     
     res.json({
       success: true,
@@ -5687,8 +5719,11 @@ app.get('/api/v2/public/product/:product_id', async (req, res) => {
     });
     
   } catch (error) {
-    console.error('💥 Erreur produit V2:', error);
-    res.status(500).json({ error: error.message });
+    console.error('💥 [V2] Erreur serveur:', error);
+    res.status(500).json({ 
+      error: error.message,
+      debug: 'Erreur interne du serveur'
+    });
   }
 });
 
