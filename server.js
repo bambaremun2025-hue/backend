@@ -6006,6 +6006,103 @@ app.get('/api/whatsapp/check', (req, res) => {
   });
 });
 
+// Sauvegarder le panier
+app.post('/api/cart/save', requireAuth, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const { items } = req.body;
+    
+    console.log('🛒 Sauvegarde panier pour user:', userId);
+    console.log('📦 Items:', items?.length || 0);
+    
+    // Upsert dans la table user_carts
+    const { data, error } = await supabase
+      .from('user_carts')
+      .upsert({
+        user_id: userId,
+        items: items || [],
+        updated_at: new Date().toISOString()
+      }, {
+        onConflict: 'user_id'
+      })
+      .select();
+    
+    if (error) {
+      console.error('❌ Erreur sauvegarde panier:', error);
+      throw error;
+    }
+    
+    console.log('✅ Panier sauvegardé');
+    
+    res.json({
+      success: true,
+      saved: true,
+      itemCount: items?.length || 0
+    });
+    
+  } catch (error) {
+    console.error('💥 Erreur panier:', error);
+    res.status(500).json({ 
+      success: false,
+      error: error.message 
+    });
+  }
+});
+
+// Récupérer le panier
+app.get('/api/cart', requireAuth, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    
+    const { data, error } = await supabase
+      .from('user_carts')
+      .select('items')
+      .eq('user_id', userId)
+      .single();
+    
+    if (error && error.code !== 'PGRST116') { // PGRST116 = no rows
+      throw error;
+    }
+    
+    res.json({
+      success: true,
+      items: data?.items || []
+    });
+    
+  } catch (error) {
+    console.error('💥 Erreur récupération panier:', error);
+    res.status(500).json({ 
+      success: false,
+      error: error.message 
+    });
+  }
+});
+
+// Vider le panier
+app.delete('/api/cart', requireAuth, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    
+    const { error } = await supabase
+      .from('user_carts')
+      .delete()
+      .eq('user_id', userId);
+    
+    if (error) throw error;
+    
+    res.json({
+      success: true,
+      message: 'Panier vidé'
+    });
+    
+  } catch (error) {
+    res.status(500).json({ 
+      success: false,
+      error: error.message 
+    });
+  }
+});
+
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`Serveur demarre sur le port ${PORT}`);
 });
