@@ -6103,6 +6103,191 @@ app.delete('/api/cart', requireAuth, async (req, res) => {
   }
 });
 
+// ==================== 🎨 ROUTES TEMPLATES BOUTIQUE ====================
+
+// 1. Récupérer la configuration d'un utilisateur
+app.get('/api/shop/template/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    
+    const { data, error } = await supabase
+      .from('shop_templates')
+      .select('*')
+      .eq('user_id', userId)
+      .single();
+    
+    if (error && error.code !== 'PGRST116') { // PGRST116 = no rows
+      throw error;
+    }
+    
+    if (!data) {
+      // Retourner la config par défaut
+      return res.json({
+        success: true,
+        template: {
+          template_number: 1,
+          shop_name: 'Ma Boutique',
+          tagline: 'La mode qui vous ressemble',
+          primary_color: '#1E1E26',
+          accent_color: '#C8A96E',
+          show_announcement: true,
+          announcement: 'Livraison gratuite dès 20 000 FCFA',
+          // ... autres valeurs par défaut
+        }
+      });
+    }
+    
+    res.json({ success: true, template: data });
+    
+  } catch (error) {
+    console.error('❌ Erreur récupération template:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// 2. Sauvegarder/Mettre à jour la configuration (authentifié)
+app.post('/api/shop/template/save', requireAuth, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const templateData = req.body;
+    
+    console.log('🎨 Sauvegarde template pour user:', userId);
+    
+    // Vérifier si l'utilisateur a déjà une config
+    const { data: existing } = await supabase
+      .from('shop_templates')
+      .select('id')
+      .eq('user_id', userId)
+      .single();
+    
+    let result;
+    
+    if (existing) {
+      // Mise à jour
+      const { data, error } = await supabase
+        .from('shop_templates')
+        .update({
+          ...templateData,
+          updated_at: new Date().toISOString()
+        })
+        .eq('user_id', userId)
+        .select();
+      
+      if (error) throw error;
+      result = data;
+      
+    } else {
+      // Création
+      const { data, error } = await supabase
+        .from('shop_templates')
+        .insert([{
+          user_id: userId,
+          ...templateData
+        }])
+        .select();
+      
+      if (error) throw error;
+      result = data;
+    }
+    
+    res.json({
+      success: true,
+      message: 'Template sauvegardé avec succès',
+      template: result[0]
+    });
+    
+  } catch (error) {
+    console.error('❌ Erreur sauvegarde template:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// 3. Upload du logo (nécessite un bucket storage)
+app.post('/api/shop/template/upload-logo', requireAuth, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const { logoBase64 } = req.body;
+    
+    if (!logoBase64) {
+      return res.status(400).json({ error: 'Logo manquant' });
+    }
+    
+    // Extraire le base64
+    const base64Data = logoBase64.split(',')[1];
+    const buffer = Buffer.from(base64Data, 'base64');
+    
+    // Nom du fichier unique
+    const fileName = `logos/${userId}/${Date.now()}.png`;
+    
+    // Upload vers Supabase Storage
+    const { data, error } = await supabase.storage
+      .from('shop-logos')
+      .upload(fileName, buffer, {
+        contentType: 'image/png',
+        upsert: true
+      });
+    
+    if (error) throw error;
+    
+    // Obtenir l'URL publique
+    const { data: { publicUrl } } = supabase.storage
+      .from('shop-logos')
+      .getPublicUrl(fileName);
+    
+    // Mettre à jour la table shop_templates avec l'URL du logo
+    await supabase
+      .from('shop_templates')
+      .update({ logo_url: publicUrl })
+      .eq('user_id', userId);
+    
+    res.json({
+      success: true,
+      logo_url: publicUrl
+    });
+    
+  } catch (error) {
+    console.error('❌ Erreur upload logo:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 4. Route publique pour afficher la boutique d'un utilisateur
+app.get('/api/public/shop-themed/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    
+    // Récupérer la configuration
+    const { data: template, error: templateError } = await supabase
+      .from('shop_templates')
+      .select('*')
+      .eq('user_id', userId)
+      .single();
+    
+    if (templateError && templateError.code !== 'PGRST116') {
+      throw templateError;
+    }
+    
+    // Récupérer les produits (comme avant)
+    const { data: products, error: productsError } = await supabase
+      .from('products')
+      .select('*')
+      .eq('user_id', userId)
+      .gt('stock', 0);
+    
+    if (productsError) throw productsError;
+    
+    res.json({
+      success: true,
+      template: template || null,
+      products: products || []
+    });
+    
+  } catch (error) {
+    console.error('❌ Erreur boutique thématisée:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`Serveur demarre sur le port ${PORT}`);
 });
