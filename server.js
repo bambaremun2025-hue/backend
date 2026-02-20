@@ -70,6 +70,7 @@ app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 app.use(cors({
     origin: [
+        'https://samaboutik.net',
         'https://samaboutiksn.netlify.app',
         'https://builder.io',
         'http://localhost:3000',
